@@ -3,6 +3,9 @@ import '../../auth/domain/user.dart';
 import 'register_screen.dart';
 import 'home_screen.dart';
 
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+
 class LoginScreen extends StatefulWidget {
   final VoidCallback onToggleTheme;
 
@@ -27,11 +30,11 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  void _login() {
-    final user = User(
-      email: _emailController.text.trim(),
-      password: _passwordController.text,
-    );
+  Future<void> _login() async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+
+    final user = User(email: email, password: password);
 
     if (!user.isValidEmail()) {
       setState(() {
@@ -49,10 +52,40 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    setState(() {
-      _message = "Login exitoso (simulado)";
-      _isError = false;
-    });
+    try {
+      final response = await http.post(
+        Uri.parse("http://10.0.2.2:8000/login"), // EMULADOR
+        //Uri.parse("http://xxx.xxx.x.xx:8000/login"), // CELULAR REAL
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({"emailusu": email, "password": password}),
+      );
+
+      final data = json.decode(response.body);
+
+      if (data["success"] == true) {
+        setState(() {
+          _message = "Login exitoso";
+          _isError = false;
+        });
+
+        if (!mounted) return;
+
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const HomeScreen()),
+        );
+      } else {
+        setState(() {
+          _message = data["message"] ?? "Credenciales incorrectas";
+          _isError = true;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _message = "Error de conexión: $e";
+        _isError = true;
+      });
+    }
   }
 
   @override
@@ -76,20 +109,14 @@ class _LoginScreenState extends State<LoginScreen> {
                       onPressed: widget.onToggleTheme,
                     ),
                   ),
-
                   ColorFiltered(
                     colorFilter: ColorFilter.mode(
                       theme.colorScheme.onSurface,
                       BlendMode.srcIn,
                     ),
-                    child: Image.asset(
-                      "assets/images/logo.png",
-                      height: 90,
-                    ),
+                    child: Image.asset("assets/images/logo.png", height: 90),
                   ),
-
                   const SizedBox(height: 20),
-
                   Text(
                     "Bienvenido a CCU",
                     style: theme.textTheme.headlineSmall?.copyWith(
@@ -97,28 +124,21 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     textAlign: TextAlign.center,
                   ),
-
                   const SizedBox(height: 8),
-
                   Text(
                     "Calendario y Calculadora Universitaria",
                     textAlign: TextAlign.center,
                     style: theme.textTheme.bodyMedium?.copyWith(
-                      color:
-                          theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
                     ),
                   ),
-
                   const SizedBox(height: 28),
-
                   TextField(
                     controller: _emailController,
                     keyboardType: TextInputType.emailAddress,
                     autofillHints: const [AutofillHints.email],
                     onChanged: (_) {
-                      if (_message.isNotEmpty) {
-                        setState(() => _message = "");
-                      }
+                      if (_message.isNotEmpty) setState(() => _message = "");
                     },
                     decoration: InputDecoration(
                       labelText: "Correo institucional",
@@ -128,17 +148,13 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
                   ),
-
                   const SizedBox(height: 18),
-
                   TextField(
                     controller: _passwordController,
                     obscureText: _obscurePassword,
                     autofillHints: const [AutofillHints.password],
                     onChanged: (_) {
-                      if (_message.isNotEmpty) {
-                        setState(() => _message = "");
-                      }
+                      if (_message.isNotEmpty) setState(() => _message = "");
                     },
                     decoration: InputDecoration(
                       labelText: "Contraseña",
@@ -150,9 +166,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               : Icons.visibility_off,
                         ),
                         onPressed: () {
-                          setState(() {
-                            _obscurePassword = !_obscurePassword;
-                          });
+                          setState(() => _obscurePassword = !_obscurePassword);
                         },
                       ),
                       border: OutlineInputBorder(
@@ -160,45 +174,26 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
                   ),
-
                   const SizedBox(height: 28),
-
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
-                      onPressed: () async {
-                        _login();
-                        if (_isError) return;
-                        await Future.delayed(const Duration(seconds: 2));
-
-                        if (!mounted) return;
-                        Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const HomeScreen(),
-                          ),
-                        );
-                      },
+                      onPressed: _login,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: theme.colorScheme.primary,
                         foregroundColor: theme.colorScheme.onPrimary,
-                        padding:
-                            const EdgeInsets.symmetric(vertical: 18),
+                        padding: const EdgeInsets.symmetric(vertical: 18),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(16),
                         ),
                       ),
                       child: const Text(
                         "Ingresar",
-                        style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                        ),
+                        style: TextStyle(fontWeight: FontWeight.w600),
                       ),
                     ),
                   ),
-
                   const SizedBox(height: 14),
-
                   if (_message.isNotEmpty)
                     Text(
                       _message,
@@ -210,16 +205,13 @@ class _LoginScreenState extends State<LoginScreen> {
                         fontWeight: FontWeight.w500,
                       ),
                     ),
-
                   const SizedBox(height: 8),
-
                   TextButton(
                     onPressed: () {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) =>
-                              const RegisterScreen(),
+                          builder: (_) => const RegisterScreen(),
                         ),
                       );
                     },
@@ -230,7 +222,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         color: theme.colorScheme.primary,
                       ),
                     ),
-                  )
+                  ),
                 ],
               ),
             ),

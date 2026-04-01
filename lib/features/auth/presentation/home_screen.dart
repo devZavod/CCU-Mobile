@@ -1,3 +1,4 @@
+import 'package:ccu_mobile/features/auth/presentation/login_screen.dart';
 import 'package:flutter/material.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -50,10 +51,7 @@ class _HomeScreenState extends State<HomeScreen> {
             Text(
               "CCU",
               key: Key("app_title"),
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
           ],
         ),
@@ -66,18 +64,23 @@ class _HomeScreenState extends State<HomeScreen> {
               decoration: BoxDecoration(
                 color: Theme.of(context).colorScheme.primary,
               ),
-              child: Image.asset(
-                "assets/images/logo.png",
-                height: 80,
-              ),
+              child: Image.asset("assets/images/logo.png", height: 80),
             ),
             const ListTile(
               leading: Icon(Icons.settings),
               title: Text("Configuración"),
             ),
-            const ListTile(
+            ListTile(
               leading: Icon(Icons.logout),
               title: Text("Cerrar sesión"),
+              onTap: () {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => LoginScreen(onToggleTheme: () {}),
+                  ),
+                );
+              },
             ),
           ],
         ),
@@ -92,10 +95,7 @@ class _HomeScreenState extends State<HomeScreen> {
         selectedItemColor: Theme.of(context).colorScheme.primary,
         unselectedItemColor: Colors.grey,
         items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home),
-            label: "Inicio",
-          ),
+          BottomNavigationBarItem(icon: Icon(Icons.home), label: "Inicio"),
           BottomNavigationBarItem(
             icon: Icon(Icons.calendar_today),
             label: "Horario",
@@ -104,10 +104,7 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: Icon(Icons.check_circle_outline),
             label: "Tareas",
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.calculate),
-            label: "Notas",
-          ),
+          BottomNavigationBarItem(icon: Icon(Icons.calculate), label: "Notas"),
           BottomNavigationBarItem(
             icon: Icon(Icons.person_outline),
             label: "Perfil",
@@ -152,10 +149,7 @@ class _HomeMainPage extends StatelessWidget {
                   icon: Icons.assignment_add,
                   title: "Agregar tarea",
                 ),
-                _QuickAccessCard(
-                  icon: Icons.calculate,
-                  title: "Calcular PPS",
-                ),
+                _QuickAccessCard(icon: Icons.calculate, title: "Calcular PPS"),
                 _QuickAccessCard(
                   icon: Icons.notifications_active,
                   title: "Recordatorios",
@@ -173,34 +167,24 @@ class _QuickAccessCard extends StatelessWidget {
   final IconData icon;
   final String title;
 
-  const _QuickAccessCard({
-    required this.icon,
-    required this.title,
-  });
+  const _QuickAccessCard({required this.icon, required this.title});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
     return Card(
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       elevation: 3,
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
-        onTap: () {
-        },
+        onTap: () {},
         child: Padding(
           padding: const EdgeInsets.all(20),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                icon,
-                size: 40,
-                color: theme.colorScheme.primary,
-              ),
+              Icon(icon, size: 40, color: theme.colorScheme.primary),
               const SizedBox(height: 12),
               Text(
                 title,

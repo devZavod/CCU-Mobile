@@ -114,7 +114,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       prefixIcon: const Icon(Icons.lock),
                       suffixIcon: IconButton(
                         icon: Icon(
-                          _obscurePassword ? Icons.visibility : Icons.visibility_off,
+                          _obscurePassword
+                              ? Icons.visibility
+                              : Icons.visibility_off,
                         ),
                         onPressed: () {
                           setState(() {
@@ -141,9 +143,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         if (!mounted) return;
                         Navigator.pushReplacement(
                           context,
-                          MaterialPageRoute(
-                            builder: (_) => const HomeScreen(),
-                          ),
+                          MaterialPageRoute(builder: (_) => const HomeScreen()),
                         );
                       },
                       style: ElevatedButton.styleFrom(
@@ -168,7 +168,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       _message,
                       textAlign: TextAlign.center,
                       style: TextStyle(
-                        color: _isError ? theme.colorScheme.error : theme.colorScheme.primary,
+                        color: _isError
+                            ? theme.colorScheme.error
+                            : theme.colorScheme.primary,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
