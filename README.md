@@ -49,6 +49,8 @@ La aplicación se divide en módulos clave diseñados para cubrir cada aspecto d
 ---
 
 ## Estructura del Proyecto
+
+<pre>
 Plaintext
 CCU-Mobile/
 ├── mobile_app/            # Proyecto Flutter completo
@@ -61,6 +63,6 @@ CCU-Mobile/
     ├── main.py            # Lógica central y endpoints
     ├── users.json         # Base de datos de prueba
     └── uploads/           # Fotos de perfil almacenadas
-
+</pre>   
 
 ### Autores: Josh4OP, Luis-Salas-Reyes, devZavod
