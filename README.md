@@ -51,9 +51,8 @@ La aplicación se divide en módulos clave diseñados para cubrir cada aspecto d
 ## Estructura del Proyecto
 
 <pre>
-Plaintext
-CCU-Mobile/
-├── mobile_app/            # Proyecto Flutter completo
+CCU-Project/
+├── ccu_mobile/            # Proyecto Flutter completo
 │   ├── lib/
 │   │   ├── core/          # Temas, colores y constantes
 │   │   ├── features/      # Módulos: Auth, Schedule, Calculations
