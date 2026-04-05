@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../auth/domain/user.dart';
-import 'home_screen.dart';
+import '../../auth/data/auth_service.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -10,46 +10,76 @@ class RegisterScreen extends StatefulWidget {
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
+  final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
 
   bool _obscurePassword = true;
-  String _message = "";
-  bool _isError = false;
+  bool _loading = false;
 
   @override
   void dispose() {
+    _nameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
 
-  void _register() {
+  void _showSnackBar(String message, {bool isError = true}) {
+    final theme = Theme.of(context);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: isError
+            ? theme.colorScheme.error
+            : theme.colorScheme.primary,
+      ),
+    );
+  }
+
+  void _register() async {
     final user = User(
       email: _emailController.text.trim(),
       password: _passwordController.text,
     );
 
+    if (_nameController.text.trim().isEmpty) {
+      _showSnackBar("Por favor, ingresa tu nombre.");
+      return;
+    }
+
     if (!user.isValidEmail()) {
-      setState(() {
-        _message = "Debe usar correo institucional.";
-        _isError = true;
-      });
+      _showSnackBar("Debe usar correo institucional.");
       return;
     }
 
     if (!user.isValidPassword()) {
-      setState(() {
-        _message = "Contraseña mínima 8 caracteres.";
-        _isError = true;
-      });
+      _showSnackBar("Contraseña mínima 8 caracteres.");
       return;
     }
 
-    setState(() {
-      _message = "Registro exitoso (simulado)";
-      _isError = false;
-    });
+    setState(() => _loading = true);
+
+    try {
+      final result = await AuthService.register(
+        _nameController.text.trim(),
+        _emailController.text.trim(),
+        _passwordController.text,
+      );
+
+      setState(() => _loading = false);
+
+      if (result['success']) {
+        _showSnackBar("¡Registro exitoso! Ya puedes iniciar sesión.", isError: false);
+        if (mounted) Navigator.pop(context);
+      } else {
+        _showSnackBar(result['message'] ?? "Error en el servidor.");
+      }
+    } catch (e) {
+      setState(() => _loading = false);
+      _showSnackBar("No se pudo conectar con el servidor.");
+    }
   }
 
   @override
@@ -81,16 +111,27 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       fontWeight: FontWeight.w700,
                     ),
                   ),
-
                   const SizedBox(height: 28),
+
+                  TextField(
+                    key: const Key('name_field'),
+                    controller: _nameController,
+                    keyboardType: TextInputType.name,
+                    textCapitalization: TextCapitalization.words,
+                    decoration: InputDecoration(
+                      labelText: "Nombre completo",
+                      prefixIcon: const Icon(Icons.person),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 18),
 
                   TextField(
                     controller: _emailController,
                     keyboardType: TextInputType.emailAddress,
-                    autofillHints: const [AutofillHints.email],
-                    onChanged: (_) {
-                      if (_message.isNotEmpty) setState(() => _message = "");
-                    },
                     decoration: InputDecoration(
                       labelText: "Correo institucional",
                       prefixIcon: const Icon(Icons.email),
@@ -105,21 +146,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   TextField(
                     controller: _passwordController,
                     obscureText: _obscurePassword,
-                    autofillHints: const [AutofillHints.password],
-                    onChanged: (_) {
-                      if (_message.isNotEmpty) setState(() => _message = "");
-                    },
                     decoration: InputDecoration(
                       labelText: "Contraseña",
                       prefixIcon: const Icon(Icons.lock),
                       suffixIcon: IconButton(
                         icon: Icon(
-                          _obscurePassword ? Icons.visibility : Icons.visibility_off,
+                          _obscurePassword
+                              ? Icons.visibility
+                              : Icons.visibility_off,
                         ),
                         onPressed: () {
-                          setState(() {
-                            _obscurePassword = !_obscurePassword;
-                          });
+                          setState(() => _obscurePassword = !_obscurePassword);
                         },
                       ),
                       border: OutlineInputBorder(
@@ -133,19 +170,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
-                      onPressed: () async {
-                        _register();
-                        if (_isError) return;
-                        await Future.delayed(const Duration(seconds: 2));
-
-                        if (!mounted) return;
-                        Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const HomeScreen(),
-                          ),
-                        );
-                      },
+                      onPressed: _loading ? null : _register,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: theme.colorScheme.primary,
                         foregroundColor: theme.colorScheme.onPrimary,
@@ -154,24 +179,21 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           borderRadius: BorderRadius.circular(16),
                         ),
                       ),
-                      child: const Text(
-                        "Registrarse",
-                        style: TextStyle(fontWeight: FontWeight.w600),
-                      ),
+                      child: _loading
+                          ? const SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Text(
+                              "Registrarse",
+                              style: TextStyle(fontWeight: FontWeight.w600),
+                            ),
                     ),
                   ),
-
-                  const SizedBox(height: 14),
-
-                  if (_message.isNotEmpty)
-                    Text(
-                      _message,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: _isError ? theme.colorScheme.error : theme.colorScheme.primary,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
                 ],
               ),
             ),

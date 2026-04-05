@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../auth/domain/user.dart';
+import '../../auth/data/auth_service.dart';
 import 'register_screen.dart';
 import 'home_screen.dart';
 
@@ -17,8 +19,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
 
   bool _obscurePassword = true;
-  String _message = "";
-  bool _isError = false;
+  bool _loading = false;
 
   @override
   void dispose() {
@@ -27,32 +28,67 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  void _login() {
+  void _showSnackBar(String message, {bool isError = true}) {
+    final theme = Theme.of(context);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: isError
+            ? theme.colorScheme.error
+            : theme.colorScheme.primary,
+      ),
+    );
+  }
+
+  void _login() async {
     final user = User(
       email: _emailController.text.trim(),
       password: _passwordController.text,
     );
 
     if (!user.isValidEmail()) {
-      setState(() {
-        _message = "Correo institucional inválido.";
-        _isError = true;
-      });
+      _showSnackBar("Correo institucional inválido.");
       return;
     }
 
     if (!user.isValidPassword()) {
-      setState(() {
-        _message = "La contraseña debe tener mínimo 8 caracteres.";
-        _isError = true;
-      });
+      _showSnackBar("La contraseña debe tener mínimo 8 caracteres.");
       return;
     }
 
-    setState(() {
-      _message = "Login exitoso (simulado)";
-      _isError = false;
-    });
+    setState(() => _loading = true);
+
+    final result = await AuthService.login(
+      _emailController.text.trim(),
+      _passwordController.text,
+    );
+
+    if (mounted) setState(() => _loading = false);
+
+    if (result['success']) {
+      // --- INICIO AJUSTE PARA GUARDAR SESIÓN ---
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('isLoggedIn', true);
+      await prefs.setString('userName', result['name'] ?? "Estudiante");
+      await prefs.setString('userEmail', result['user']?['email'] ?? _emailController.text.trim());
+      // --- FIN AJUSTE ---
+
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => HomeScreen(
+              onToggleTheme: widget.onToggleTheme,
+              userName: result['name'] ?? "Estudiante",
+              userEmail: result['user']?['email'] ?? _emailController.text.trim(),
+            ),
+          ),
+        );
+      }
+    } else {
+      _showSnackBar(result['message'] ?? "Error al iniciar sesión.");
+    }
   }
 
   @override
@@ -104,8 +140,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     "Calendario y Calculadora Universitaria",
                     textAlign: TextAlign.center,
                     style: theme.textTheme.bodyMedium?.copyWith(
-                      color:
-                          theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
                     ),
                   ),
 
@@ -115,11 +150,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     controller: _emailController,
                     keyboardType: TextInputType.emailAddress,
                     autofillHints: const [AutofillHints.email],
-                    onChanged: (_) {
-                      if (_message.isNotEmpty) {
-                        setState(() => _message = "");
-                      }
-                    },
                     decoration: InputDecoration(
                       labelText: "Correo institucional",
                       prefixIcon: const Icon(Icons.email),
@@ -135,11 +165,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     controller: _passwordController,
                     obscureText: _obscurePassword,
                     autofillHints: const [AutofillHints.password],
-                    onChanged: (_) {
-                      if (_message.isNotEmpty) {
-                        setState(() => _message = "");
-                      }
-                    },
                     decoration: InputDecoration(
                       labelText: "Contraseña",
                       prefixIcon: const Icon(Icons.lock),
@@ -150,9 +175,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               : Icons.visibility_off,
                         ),
                         onPressed: () {
-                          setState(() {
-                            _obscurePassword = !_obscurePassword;
-                          });
+                          setState(() => _obscurePassword = !_obscurePassword);
                         },
                       ),
                       border: OutlineInputBorder(
@@ -166,63 +189,44 @@ class _LoginScreenState extends State<LoginScreen> {
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
-                      onPressed: () async {
-                        _login();
-                        if (_isError) return;
-                        await Future.delayed(const Duration(seconds: 2));
-
-                        if (!mounted) return;
-                        Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const HomeScreen(),
-                          ),
-                        );
-                      },
+                      onPressed: _loading ? null : _login,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: theme.colorScheme.primary,
                         foregroundColor: theme.colorScheme.onPrimary,
-                        padding:
-                            const EdgeInsets.symmetric(vertical: 18),
+                        padding: const EdgeInsets.symmetric(vertical: 18),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(16),
                         ),
                       ),
-                      child: const Text(
-                        "Ingresar",
-                        style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
+                      child: _loading
+                          ? const SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Text(
+                              "Ingresar",
+                              style: TextStyle(fontWeight: FontWeight.w600),
+                            ),
                     ),
                   ),
 
                   const SizedBox(height: 14),
 
-                  if (_message.isNotEmpty)
-                    Text(
-                      _message,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: _isError
-                            ? theme.colorScheme.error
-                            : theme.colorScheme.primary,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-
-                  const SizedBox(height: 8),
-
                   TextButton(
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) =>
-                              const RegisterScreen(),
-                        ),
-                      );
-                    },
+                    onPressed: _loading
+                        ? null
+                        : () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const RegisterScreen(),
+                              ),
+                            );
+                          },
                     child: Text(
                       "Crear cuenta",
                       style: TextStyle(
@@ -230,7 +234,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         color: theme.colorScheme.primary,
                       ),
                     ),
-                  )
+                  ),
                 ],
               ),
             ),

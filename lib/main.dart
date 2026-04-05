@@ -1,12 +1,36 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'core/theme/app_theme.dart';
 import 'features/auth/presentation/login_screen.dart';
+import 'features/auth/presentation/home_screen.dart';
 
-void main() {
-  runApp(const CCUApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  final prefs = await SharedPreferences.getInstance();
+
+  final bool isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
+  final String userName = prefs.getString('userName') ?? "Estudiante";
+  final String userEmail = prefs.getString('userEmail') ?? "";
+
+  runApp(CCUApp(
+    isLoggedIn: isLoggedIn,
+    userName: userName,
+    userEmail: userEmail,
+  ));
 }
 
 class CCUApp extends StatefulWidget {
-  const CCUApp({super.key});
+  final bool isLoggedIn;
+  final String userName;
+  final String userEmail;
+
+  const CCUApp({
+    super.key,
+    required this.isLoggedIn,
+    required this.userName,
+    required this.userEmail,
+  });
 
   @override
   State<CCUApp> createState() => _CCUAppState();
@@ -17,11 +41,7 @@ class _CCUAppState extends State<CCUApp> {
 
   void toggleTheme() {
     setState(() {
-      if (_themeMode == ThemeMode.dark) {
-        _themeMode = ThemeMode.light;
-      } else {
-        _themeMode = ThemeMode.dark;
-      }
+      _themeMode = _themeMode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
     });
   }
 
@@ -31,23 +51,16 @@ class _CCUAppState extends State<CCUApp> {
       debugShowCheckedModeBanner: false,
       title: 'CCU',
       themeMode: _themeMode,
-      theme: ThemeData(
-        brightness: Brightness.light,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF1E3A8A),
-          brightness: Brightness.light,
-        ),
-        useMaterial3: true,
-      ),
-      darkTheme: ThemeData(
-        brightness: Brightness.dark,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF1E3A8A),
-          brightness: Brightness.dark,
-        ),
-        useMaterial3: true,
-      ),
-      home: LoginScreen(onToggleTheme: toggleTheme),
+      theme: AppTheme.lightTheme,
+      darkTheme: AppTheme.darkTheme,
+
+      home: widget.isLoggedIn
+          ? HomeScreen(
+              userName: widget.userName,
+              userEmail: widget.userEmail,
+              onToggleTheme: toggleTheme,
+            )
+          : LoginScreen(onToggleTheme: toggleTheme),
     );
   }
 }
