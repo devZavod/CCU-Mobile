@@ -48,7 +48,7 @@ La aplicación se divide en módulos clave diseñados para cubrir cada aspecto d
 
 ---
 
-## Estructura del Proyecto
+## Estructura General del Proyecto
 
 <pre>
 CCU-Project/
