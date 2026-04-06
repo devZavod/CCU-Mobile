@@ -52,7 +52,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    // ELIMINADO: isDark no se usaba en ningún lugar
 
     return Scaffold(
       appBar: AppBar(
