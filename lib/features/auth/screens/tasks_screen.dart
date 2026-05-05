@@ -485,7 +485,7 @@ class _TaskFormState extends State<_TaskForm> {
               const SizedBox(height: 14),
 
               DropdownButtonFormField<TaskPriority>(
-                value: _priority,
+                initialValue: _priority,
                 decoration: InputDecoration(
                   labelText: 'Prioridad',
                   prefixIcon: const Icon(Icons.flag_outlined),

@@ -245,7 +245,7 @@ class _ScheduleScreenState extends State<ScheduleScreen>
                   padding: const EdgeInsets.only(
                       top: 16, left: 16, right: 16, bottom: 90),
                   itemCount: dayEntries.length,
-                  separatorBuilder: (_, __) =>
+                  separatorBuilder: (_, _) =>
                       const SizedBox(height: 8),
                   itemBuilder: (_, j) {
                     final entry = dayEntries[j];
@@ -600,7 +600,7 @@ class _ScheduleFormState extends State<_ScheduleForm> {
               const SizedBox(height: 14),
 
               DropdownButtonFormField<int>(
-                value: _selectedDay,
+                initialValue: _selectedDay,
                 decoration: InputDecoration(
                   labelText: 'Día de la semana *',
                   prefixIcon: const Icon(Icons.today_outlined),

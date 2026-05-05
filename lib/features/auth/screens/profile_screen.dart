@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import '../../auth/data/auth_service.dart';
+import '../services/auth_service.dart';
+
 
 class ProfileScreen extends StatefulWidget {
   final String userName;

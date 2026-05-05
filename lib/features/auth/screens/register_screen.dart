@@ -1,20 +1,16 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import '../../auth/domain/user.dart';
-import '../../auth/data/auth_service.dart';
-import 'register_screen.dart';
-import 'home_screen.dart';
+import '../models/user_validator.dart';
+import '../services/auth_service.dart';
 
-class LoginScreen extends StatefulWidget {
-  final VoidCallback onToggleTheme;
-
-  const LoginScreen({super.key, required this.onToggleTheme});
+class RegisterScreen extends StatefulWidget {
+  const RegisterScreen({super.key});
 
   @override
-  State<LoginScreen> createState() => _LoginScreenState();
+  State<RegisterScreen> createState() => _RegisterScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _RegisterScreenState extends State<RegisterScreen> {
+  final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
 
@@ -23,6 +19,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   void dispose() {
+    _nameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
@@ -41,53 +38,47 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  void _login() async {
+  void _register() async {
     final user = User(
       email: _emailController.text.trim(),
       password: _passwordController.text,
     );
 
+    if (_nameController.text.trim().isEmpty) {
+      _showSnackBar("Por favor, ingresa tu nombre.");
+      return;
+    }
+
     if (!user.isValidEmail()) {
-      _showSnackBar("Correo institucional inválido.");
+      _showSnackBar("Debe usar correo institucional.");
       return;
     }
 
     if (!user.isValidPassword()) {
-      _showSnackBar("La contraseña debe tener mínimo 8 caracteres.");
+      _showSnackBar("Contraseña mínima 8 caracteres.");
       return;
     }
 
     setState(() => _loading = true);
 
-    final result = await AuthService.login(
-      _emailController.text.trim(),
-      _passwordController.text,
-    );
+    try {
+      final result = await AuthService.register(
+        _nameController.text.trim(),
+        _emailController.text.trim(),
+        _passwordController.text,
+      );
 
-    if (mounted) setState(() => _loading = false);
+      setState(() => _loading = false);
 
-    if (result['success']) {
-      // --- INICIO AJUSTE PARA GUARDAR SESIÓN ---
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('isLoggedIn', true);
-      await prefs.setString('userName', result['name'] ?? "Estudiante");
-      await prefs.setString('userEmail', result['user']?['email'] ?? _emailController.text.trim());
-      // --- FIN AJUSTE ---
-
-      if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (_) => HomeScreen(
-              onToggleTheme: widget.onToggleTheme,
-              userName: result['name'] ?? "Estudiante",
-              userEmail: result['user']?['email'] ?? _emailController.text.trim(),
-            ),
-          ),
-        );
+      if (result['success']) {
+        _showSnackBar("¡Registro exitoso! Ya puedes iniciar sesión.", isError: false);
+        if (mounted) Navigator.pop(context);
+      } else {
+        _showSnackBar(result['message'] ?? "Error en el servidor.");
       }
-    } else {
-      _showSnackBar(result['message'] ?? "Error al iniciar sesión.");
+    } catch (e) {
+      setState(() => _loading = false);
+      _showSnackBar("No se pudo conectar con el servidor.");
     }
   }
 
@@ -96,6 +87,15 @@ class _LoginScreenState extends State<LoginScreen> {
     final theme = Theme.of(context);
 
     return Scaffold(
+      appBar: AppBar(
+        centerTitle: true,
+        title: Text(
+          "Registro",
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
@@ -105,51 +105,33 @@ class _LoginScreenState extends State<LoginScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Align(
-                    alignment: Alignment.topRight,
-                    child: IconButton(
-                      icon: const Icon(Icons.brightness_6),
-                      onPressed: widget.onToggleTheme,
-                    ),
-                  ),
-
-                  ColorFiltered(
-                    colorFilter: ColorFilter.mode(
-                      theme.colorScheme.onSurface,
-                      BlendMode.srcIn,
-                    ),
-                    child: Image.asset(
-                      "assets/images/logo.png",
-                      height: 90,
-                    ),
-                  ),
-
-                  const SizedBox(height: 20),
-
                   Text(
-                    "Bienvenido a CCU",
+                    "Crear Cuenta",
                     style: theme.textTheme.headlineSmall?.copyWith(
                       fontWeight: FontWeight.w700,
                     ),
-                    textAlign: TextAlign.center,
                   ),
+                  const SizedBox(height: 28),
 
-                  const SizedBox(height: 8),
-
-                  Text(
-                    "Calendario y Calculadora Universitaria",
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                  TextField(
+                    key: const Key('name_field'),
+                    controller: _nameController,
+                    keyboardType: TextInputType.name,
+                    textCapitalization: TextCapitalization.words,
+                    decoration: InputDecoration(
+                      labelText: "Nombre completo",
+                      prefixIcon: const Icon(Icons.person),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
                     ),
                   ),
 
-                  const SizedBox(height: 28),
+                  const SizedBox(height: 18),
 
                   TextField(
                     controller: _emailController,
                     keyboardType: TextInputType.emailAddress,
-                    autofillHints: const [AutofillHints.email],
                     decoration: InputDecoration(
                       labelText: "Correo institucional",
                       prefixIcon: const Icon(Icons.email),
@@ -164,7 +146,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   TextField(
                     controller: _passwordController,
                     obscureText: _obscurePassword,
-                    autofillHints: const [AutofillHints.password],
                     decoration: InputDecoration(
                       labelText: "Contraseña",
                       prefixIcon: const Icon(Icons.lock),
@@ -189,7 +170,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
-                      onPressed: _loading ? null : _login,
+                      onPressed: _loading ? null : _register,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: theme.colorScheme.primary,
                         foregroundColor: theme.colorScheme.onPrimary,
@@ -208,31 +189,9 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                             )
                           : const Text(
-                              "Ingresar",
+                              "Registrarse",
                               style: TextStyle(fontWeight: FontWeight.w600),
                             ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 14),
-
-                  TextButton(
-                    onPressed: _loading
-                        ? null
-                        : () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => const RegisterScreen(),
-                              ),
-                            );
-                          },
-                    child: Text(
-                      "Crear cuenta",
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        color: theme.colorScheme.primary,
-                      ),
                     ),
                   ),
                 ],
