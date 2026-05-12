@@ -39,6 +39,11 @@ class CCUApp extends StatefulWidget {
 class _CCUAppState extends State<CCUApp> {
   ThemeMode _themeMode = ThemeMode.system;
 
+  @override
+  void initState() { 
+    super.initState();
+  }
+
   void toggleTheme() {
     setState(() {
       _themeMode = _themeMode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
@@ -60,7 +65,9 @@ class _CCUAppState extends State<CCUApp> {
               userEmail: widget.userEmail,
               onToggleTheme: toggleTheme,
             )
-          : LoginScreen(onToggleTheme: toggleTheme),
+          : LoginScreen(
+              onToggleTheme: toggleTheme,
+            ),
     );
   }
 }

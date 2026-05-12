@@ -1,5 +1,7 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ccu_mobile/main.dart';
+import 'package:ccu_mobile/core/theme/app_theme.dart';
 
 void main() {
   testWidgets('Carga inicial de la app - Smoke test', (WidgetTester tester) async {

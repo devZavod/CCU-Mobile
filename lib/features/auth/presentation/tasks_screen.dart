@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 
 enum TaskPriority { alta, media, baja }
 
@@ -10,6 +12,9 @@ class Task {
   TaskPriority priority;
   String subject;
   bool completed;
+  bool synced;
+  DateTime createdAt;
+  DateTime updatedAt;
 
   Task({
     required this.id,
@@ -19,7 +24,73 @@ class Task {
     this.priority = TaskPriority.media,
     this.subject = '',
     this.completed = false,
-  });
+    this.synced = false,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  })  : createdAt = createdAt ?? DateTime.now(),
+        updatedAt = updatedAt ?? DateTime.now();
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'title': title,
+      'description': description,
+      'deadline': deadline?.toIso8601String(),
+      'priority': priority.name,
+      'subject': subject,
+      'completed': completed,
+      'synced': synced,
+      'createdAt': createdAt.toIso8601String(),
+      'updatedAt': updatedAt.toIso8601String(),
+    };
+  }
+
+  factory Task.fromJson(Map<String, dynamic> json) {
+    return Task(
+      id: json['id'] as String,
+      title: json['title'] as String,
+      description: json['description'] as String? ?? '',
+      deadline: json['deadline'] != null
+          ? DateTime.parse(json['deadline'] as String)
+          : null,
+      priority: TaskPriority.values.firstWhere(
+        (p) => p.name == json['priority'],
+        orElse: () => TaskPriority.media,
+      ),
+      subject: json['subject'] as String? ?? '',
+      completed: json['completed'] as bool? ?? false,
+      synced: json['synced'] as bool? ?? false,
+      createdAt: json['createdAt'] != null
+          ? DateTime.parse(json['createdAt'] as String)
+          : DateTime.now(),
+      updatedAt: json['updatedAt'] != null
+          ? DateTime.parse(json['updatedAt'] as String)
+          : DateTime.now(),
+    );
+  }
+
+  Task copyWith({
+    String? title,
+    String? description,
+    DateTime? deadline,
+    TaskPriority? priority,
+    String? subject,
+    bool? completed,
+    bool? synced,
+  }) {
+    return Task(
+      id: id,
+      title: title ?? this.title,
+      description: description ?? this.description,
+      deadline: deadline ?? this.deadline,
+      priority: priority ?? this.priority,
+      subject: subject ?? this.subject,
+      completed: completed ?? this.completed,
+      synced: synced ?? this.synced,
+      createdAt: createdAt,
+      updatedAt: DateTime.now(),
+    );
+  }
 }
 
 class TasksScreen extends StatefulWidget {
@@ -31,6 +102,58 @@ class TasksScreen extends StatefulWidget {
 
 class _TasksScreenState extends State<TasksScreen> {
   final List<Task> _tasks = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTasks();
+  }
+
+  Future<void> _loadTasks() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final tasksJson = prefs.getString('tasks');
+
+      if (tasksJson != null && tasksJson.isNotEmpty) {
+        final List<dynamic> decoded = jsonDecode(tasksJson);
+        setState(() {
+          _tasks.clear();
+          _tasks.addAll(decoded.map((json) => Task.fromJson(json)));
+          _isLoading = false;
+        });
+      } else {
+        setState(() => _isLoading = false);
+      }
+    } catch (e) {
+      setState(() => _isLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al cargar tareas: $e'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _saveTasks() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final tasksJson = jsonEncode(_tasks.map((t) => t.toJson()).toList());
+      await prefs.setString('tasks', tasksJson);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al guardar tareas: $e'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
+    }
+  }
 
   Color _priorityColor(TaskPriority p, ColorScheme cs) {
     switch (p) {
@@ -54,6 +177,59 @@ class _TasksScreenState extends State<TasksScreen> {
     }
   }
 
+  int _priorityValue(TaskPriority p) {
+    switch (p) {
+      case TaskPriority.alta:
+        return 3;
+      case TaskPriority.media:
+        return 2;
+      case TaskPriority.baja:
+        return 1;
+    }
+  }
+
+  void _sortTasks(List<Task> tasks) {
+    final now = DateTime.now();
+
+    tasks.sort((a, b) {
+      if (a.completed != b.completed) {
+        return a.completed ? 1 : -1;
+      }
+
+      if (a.deadline == null && b.deadline != null) return 1;
+      if (a.deadline != null && b.deadline == null) return -1;
+
+      if (a.deadline == null && b.deadline == null) {
+        return _priorityValue(b.priority)
+            .compareTo(_priorityValue(a.priority));
+      }
+
+      final aDate = DateTime(
+        a.deadline!.year,
+        a.deadline!.month,
+        a.deadline!.day,
+      );
+
+      final bDate = DateTime(
+        b.deadline!.year,
+        b.deadline!.month,
+        b.deadline!.day,
+      );
+
+      final nowDate = DateTime(now.year, now.month, now.day);
+
+      final aDiff = aDate.difference(nowDate).inDays;
+      final bDiff = bDate.difference(nowDate).inDays;
+
+      if (aDiff != bDiff) {
+        return aDiff.compareTo(bDiff);
+      }
+
+      return _priorityValue(b.priority)
+          .compareTo(_priorityValue(a.priority));
+    });
+  }
+
   String _formatDate(DateTime? d) {
     if (d == null) return 'Sin fecha';
     return '${d.day.toString().padLeft(2, '0')}/'
@@ -74,17 +250,19 @@ class _TasksScreenState extends State<TasksScreen> {
           setState(() {
             if (existing != null) {
               final i = _tasks.indexWhere((t) => t.id == existing.id);
-              if (i != -1) _tasks[i] = task;
+              if (i != -1) {
+                _tasks[i] = task.copyWith(synced: false);
+              }
             } else {
               _tasks.add(task);
             }
           });
+          _saveTasks();
         },
       ),
     );
   }
 
-  // ── Eliminar con confirmación ───────────────────────────────────────────────
   void _confirmDelete(Task task) {
     showDialog(
       context: context,
@@ -99,6 +277,7 @@ class _TasksScreenState extends State<TasksScreen> {
           TextButton(
             onPressed: () {
               setState(() => _tasks.removeWhere((t) => t.id == task.id));
+              _saveTasks();
               Navigator.pop(context);
             },
             child: Text(
@@ -111,17 +290,32 @@ class _TasksScreenState extends State<TasksScreen> {
     );
   }
 
-  // ── Toggle completada ───────────────────────────────────────────────────────
   void _toggleComplete(Task task) {
-    setState(() => task.completed = !task.completed);
+    setState(() {
+      task.completed = !task.completed;
+      task.synced = false;
+      task.updatedAt = DateTime.now();
+    });
+    _saveTasks();
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
+    if (_isLoading) {
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
     final pending = _tasks.where((t) => !t.completed).toList();
     final done = _tasks.where((t) => t.completed).toList();
+
+    _sortTasks(pending);
+    _sortTasks(done);
 
     return Scaffold(
       body: _tasks.isEmpty
@@ -148,11 +342,11 @@ class _TasksScreenState extends State<TasksScreen> {
                   top: 16, left: 16, right: 16, bottom: 90),
               children: [
                 if (pending.isNotEmpty) ...[
-                  _SectionHeader(
-                      label: 'Pendientes (${pending.length})'),
+                  _SectionHeader(label: 'Pendientes (${pending.length})'),
                   ...pending.map((t) => _TaskTile(
                         task: t,
-                        priorityColor: _priorityColor(t.priority, theme.colorScheme),
+                        priorityColor:
+                            _priorityColor(t.priority, theme.colorScheme),
                         priorityLabel: _priorityLabel(t.priority),
                         formattedDate: _formatDate(t.deadline),
                         onToggle: () => _toggleComplete(t),
@@ -162,11 +356,11 @@ class _TasksScreenState extends State<TasksScreen> {
                   const SizedBox(height: 16),
                 ],
                 if (done.isNotEmpty) ...[
-                  _SectionHeader(
-                      label: 'Completadas (${done.length})'),
+                  _SectionHeader(label: 'Completadas (${done.length})'),
                   ...done.map((t) => _TaskTile(
                         task: t,
-                        priorityColor: _priorityColor(t.priority, theme.colorScheme),
+                        priorityColor:
+                            _priorityColor(t.priority, theme.colorScheme),
                         priorityLabel: _priorityLabel(t.priority),
                         formattedDate: _formatDate(t.deadline),
                         onToggle: () => _toggleComplete(t),
@@ -176,7 +370,6 @@ class _TasksScreenState extends State<TasksScreen> {
                 ],
               ],
             ),
-
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _openForm(),
         icon: const Icon(Icons.add),
@@ -234,8 +427,6 @@ class _TaskTile extends StatelessWidget {
       child: ListTile(
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-
-        // Checkbox de completado
         leading: GestureDetector(
           onTap: onToggle,
           child: AnimatedContainer(
@@ -259,19 +450,16 @@ class _TaskTile extends StatelessWidget {
                 : null,
           ),
         ),
-
         title: Text(
           task.title,
           style: theme.textTheme.bodyMedium?.copyWith(
             fontWeight: FontWeight.w600,
-            decoration:
-                task.completed ? TextDecoration.lineThrough : null,
+            decoration: task.completed ? TextDecoration.lineThrough : null,
             color: task.completed
                 ? theme.colorScheme.onSurface.withValues(alpha: 0.4)
                 : null,
           ),
         ),
-
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -280,17 +468,15 @@ class _TaskTile extends StatelessWidget {
                 task.subject,
                 style: theme.textTheme.bodyMedium?.copyWith(
                   fontSize: 12,
-                  color:
-                      theme.colorScheme.onSurface.withValues(alpha: 0.55),
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.55),
                 ),
               ),
             const SizedBox(height: 4),
             Row(
               children: [
-                // Chip de prioridad
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 8, vertical: 2),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                   decoration: BoxDecoration(
                     color: priorityColor.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(20),
@@ -307,22 +493,21 @@ class _TaskTile extends StatelessWidget {
                 const SizedBox(width: 8),
                 Icon(Icons.calendar_today_outlined,
                     size: 11,
-                    color: theme.colorScheme.onSurface
-                        .withValues(alpha: 0.45)),
+                    color:
+                        theme.colorScheme.onSurface.withValues(alpha: 0.45)),
                 const SizedBox(width: 3),
                 Text(
                   formattedDate,
                   style: theme.textTheme.bodyMedium?.copyWith(
                     fontSize: 11,
-                    color: theme.colorScheme.onSurface
-                        .withValues(alpha: 0.45),
+                    color:
+                        theme.colorScheme.onSurface.withValues(alpha: 0.45),
                   ),
                 ),
               ],
             ),
           ],
         ),
-
         trailing: PopupMenuButton<String>(
           onSelected: (v) {
             if (v == 'edit') onEdit();
@@ -400,13 +585,16 @@ class _TaskFormState extends State<_TaskForm> {
       priority: _priority,
       deadline: _deadline,
       completed: widget.existing?.completed ?? false,
+      synced: false,
+      createdAt: widget.existing?.createdAt,
+      updatedAt: DateTime.now(),
     );
 
     widget.onSave(task);
     Navigator.pop(context);
   }
 
-    @override
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isEdit = widget.existing != null;
@@ -418,7 +606,7 @@ class _TaskFormState extends State<_TaskForm> {
         right: 24,
         bottom: MediaQuery.of(context).viewInsets.bottom + 24,
       ),
-      child: SingleChildScrollView(          // ←←← ESTO ES LO QUE FALTABA
+      child: SingleChildScrollView(
         child: Form(
           key: _formKey,
           child: Column(
@@ -436,7 +624,6 @@ class _TaskFormState extends State<_TaskForm> {
                   ),
                 ),
               ),
-
               Text(
                 isEdit ? 'Editar tarea' : 'Nueva tarea',
                 style: theme.textTheme.headlineSmall?.copyWith(
@@ -444,7 +631,6 @@ class _TaskFormState extends State<_TaskForm> {
                 ),
               ),
               const SizedBox(height: 20),
-
               TextFormField(
                 controller: _titleCtrl,
                 textCapitalization: TextCapitalization.sentences,
@@ -454,11 +640,11 @@ class _TaskFormState extends State<_TaskForm> {
                   border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(14)),
                 ),
-                validator: (v) =>
-                    (v == null || v.trim().isEmpty) ? 'El título es obligatorio' : null,
+                validator: (v) => (v == null || v.trim().isEmpty)
+                    ? 'El título es obligatorio'
+                    : null,
               ),
               const SizedBox(height: 14),
-
               TextFormField(
                 controller: _descCtrl,
                 maxLines: 2,
@@ -471,7 +657,6 @@ class _TaskFormState extends State<_TaskForm> {
                 ),
               ),
               const SizedBox(height: 14),
-
               TextFormField(
                 controller: _subjectCtrl,
                 textCapitalization: TextCapitalization.words,
@@ -483,7 +668,6 @@ class _TaskFormState extends State<_TaskForm> {
                 ),
               ),
               const SizedBox(height: 14),
-
               DropdownButtonFormField<TaskPriority>(
                 value: _priority,
                 decoration: InputDecoration(
@@ -495,7 +679,8 @@ class _TaskFormState extends State<_TaskForm> {
                 items: TaskPriority.values
                     .map((p) => DropdownMenuItem(
                           value: p,
-                          child: Text(p.name[0].toUpperCase() + p.name.substring(1)),
+                          child: Text(
+                              p.name[0].toUpperCase() + p.name.substring(1)),
                         ))
                     .toList(),
                 onChanged: (v) {
@@ -503,7 +688,6 @@ class _TaskFormState extends State<_TaskForm> {
                 },
               ),
               const SizedBox(height: 14),
-
               GestureDetector(
                 onTap: _pickDate,
                 child: InputDecorator(
@@ -515,8 +699,7 @@ class _TaskFormState extends State<_TaskForm> {
                     suffixIcon: _deadline != null
                         ? IconButton(
                             icon: const Icon(Icons.clear, size: 18),
-                            onPressed: () =>
-                                setState(() => _deadline = null),
+                            onPressed: () => setState(() => _deadline = null),
                           )
                         : null,
                   ),
@@ -529,13 +712,13 @@ class _TaskFormState extends State<_TaskForm> {
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: _deadline != null
                           ? null
-                          : theme.colorScheme.onSurface.withValues(alpha: 0.45),
+                          : theme.colorScheme.onSurface
+                              .withValues(alpha: 0.45),
                     ),
                   ),
                 ),
               ),
               const SizedBox(height: 24),
-
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(

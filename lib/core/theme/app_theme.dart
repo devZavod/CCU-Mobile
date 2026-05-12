@@ -73,4 +73,22 @@ class AppTheme {
       ),
     ),
   );
+
+  static ThemeData lightWithSeed(Color seed) {
+    return lightTheme.copyWith(
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: seed,
+        brightness: Brightness.light,
+      ),
+    );
+  }
+
+  static ThemeData darkWithSeed(Color seed) {
+    return darkTheme.copyWith(
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: seed,
+        brightness: Brightness.dark,
+      ),
+    );
+  }
 }

@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class SettingsScreen extends StatefulWidget {
   final VoidCallback onToggleTheme;
 
-  const SettingsScreen({super.key, required this.onToggleTheme});
+  const SettingsScreen({
+    super.key,
+    required this.onToggleTheme,
+  });
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -12,6 +16,242 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _notificationsEnabled = true;
   bool _reminderEnabled = true;
+  
+  bool _roundGrades = true;
+  double _maxGrade = 5.0;
+  double _minPassingGrade = 3.0;
+  double _minValidGrade = 0.0;
+  DateTime? _semesterEnd;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings();
+  }
+
+  Future<void> _loadSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _maxGrade = prefs.getDouble('maxGrade') ?? 5.0;
+      _minPassingGrade = prefs.getDouble('minPassingGrade') ?? 3.0;
+      _minValidGrade = prefs.getDouble('minValidGrade') ?? 0.0;
+      _notificationsEnabled = prefs.getBool('notificationsEnabled') ?? true;
+      _reminderEnabled = prefs.getBool('reminderEnabled') ?? true;
+      _roundGrades = prefs.getBool('roundGrades') ?? true;
+
+      final semesterMs = prefs.getInt('semesterEnd');
+      if (semesterMs != null) {
+        _semesterEnd =
+            DateTime.fromMillisecondsSinceEpoch(semesterMs);
+      }
+    });
+  }
+
+  Future<void> _openMaxGradeDialog() async {
+    final maxCtrl = TextEditingController(
+      text: _maxGrade.toStringAsFixed(1),
+    );
+    final passingCtrl = TextEditingController(
+      text: _minPassingGrade.toStringAsFixed(1),
+    );
+    final minCtrl = TextEditingController(
+      text: _minValidGrade.toStringAsFixed(1),
+    );
+
+    await showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text("Sistema de calificaciones"),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: maxCtrl,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: InputDecoration(
+                  labelText: "Nota máxima",
+                  hintText: "Ej: 5.0",
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: passingCtrl,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: InputDecoration(
+                  labelText: "Nota mínima aprobatoria",
+                  hintText: "Ej: 3.0",
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: minCtrl,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: InputDecoration(
+                  labelText: "Nota mínima válida",
+                  hintText: "Ej: 0.0",
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                "Todas las notas de la app usarán esta escala automáticamente.",
+                style: TextStyle(fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cancelar"),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final maxParsed = double.tryParse(
+                maxCtrl.text.trim().replaceAll(',', '.'),
+              );
+              final passingParsed = double.tryParse(
+                passingCtrl.text.trim().replaceAll(',', '.'),
+              );
+              final minParsed = double.tryParse(
+                minCtrl.text.trim().replaceAll(',', '.'),
+              );
+
+              if (maxParsed == null ||
+                  passingParsed == null ||
+                  minParsed == null) {
+                return;
+              }
+
+              if (maxParsed <= minParsed) return;
+              if (passingParsed < minParsed) return;
+              if (minParsed >= maxParsed) return;
+
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.setDouble('maxGrade', maxParsed);
+              await prefs.setDouble('minPassingGrade', passingParsed);
+              await prefs.setDouble('minValidGrade', minParsed);
+
+              setState(() {
+                _maxGrade = maxParsed;
+                _minPassingGrade = passingParsed;
+                _minValidGrade = minParsed;
+              });
+
+              if (mounted) {
+                Navigator.pop(context);
+              }
+            },
+            child: const Text("Guardar"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _pickSemesterEnd() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime.now(),
+      lastDate: DateTime(2035),
+    );
+
+    if (picked != null) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(
+          'semesterEnd', picked.millisecondsSinceEpoch);
+      setState(() => _semesterEnd = picked);
+    }
+  }
+
+  void _exportData() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text("Exportación disponible próximamente"),
+      ),
+    );
+  }
+
+  Future<void> _confirmReset() async {
+    final theme = Theme.of(context);
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text("Restablecer aplicación"),
+        content: const Text(
+          "Esta acción eliminará todas las materias, "
+          "tareas, notas y configuraciones guardadas.\n\n"
+          "La sesión NO se cerrará.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text("Cancelar"),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: theme.colorScheme.error,
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text("Eliminar todo"),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      await _resetAllData();
+    }
+  }
+
+  Future<void> _resetAllData() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    final isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
+    final userName = prefs.getString('userName') ?? "Estudiante";
+    final userEmail = prefs.getString('userEmail') ?? "";
+
+    await prefs.clear();
+
+    await prefs.setBool('isLoggedIn', isLoggedIn);
+    await prefs.setString('userName', userName);
+    await prefs.setString('userEmail', userEmail);
+
+    setState(() {
+      _maxGrade = 5.0;
+      _minPassingGrade = 3.0;
+      _minValidGrade = 0.0;
+      _notificationsEnabled = true;
+      _reminderEnabled = true;
+      _roundGrades = true;
+      _semesterEnd = null;
+    });
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Todos los datos fueron eliminados"),
+        ),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -27,35 +267,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
         centerTitle: true,
       ),
       body: ListView(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        padding:
+            const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         children: [
-
           _SectionLabel(label: "Apariencia"),
           const SizedBox(height: 8),
 
           Card(
-            child: SwitchListTile(
-              secondary: Icon(
-                isDark ? Icons.dark_mode : Icons.light_mode,
-                color: theme.colorScheme.primary,
-              ),
-              title: const Text(
-                "Modo oscuro",
-                style: TextStyle(fontWeight: FontWeight.w600),
-              ),
-              subtitle: Text(
-                isDark ? "Tema oscuro activo" : "Tema claro activo",
-                style: TextStyle(
-                  fontSize: 12,
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.55),
+            child: Column(
+              children: [
+                SwitchListTile(
+                  secondary: Icon(
+                    isDark ? Icons.dark_mode : Icons.light_mode,
+                    color: theme.colorScheme.primary,
+                  ),
+                  title: const Text(
+                    "Modo oscuro",
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  subtitle: Text(
+                    isDark ? "Tema oscuro activo" : "Tema claro activo",
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: theme.colorScheme.onSurface
+                          .withValues(alpha: 0.55),
+                    ),
+                  ),
+                  value: isDark,
+                  onChanged: (_) => widget.onToggleTheme(),
                 ),
-              ),
-              value: isDark,
-              onChanged: (_) => widget.onToggleTheme(),
+              ],
             ),
           ),
-
-          const SizedBox(height: 24),
 
           _SectionLabel(label: "Notificaciones"),
           const SizedBox(height: 8),
@@ -76,13 +319,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     "Avisos de tareas y eventos",
                     style: TextStyle(
                       fontSize: 12,
-                      color:
-                          theme.colorScheme.onSurface.withValues(alpha: 0.55),
+                      color: theme.colorScheme.onSurface
+                          .withValues(alpha: 0.55),
                     ),
                   ),
                   value: _notificationsEnabled,
-                  onChanged: (v) =>
-                      setState(() => _notificationsEnabled = v),
+                  onChanged: (v) async {
+                    final prefs =
+                        await SharedPreferences.getInstance();
+                    await prefs.setBool('notificationsEnabled', v);
+                    setState(() => _notificationsEnabled = v);
+                  },
                 ),
 
                 Divider(
@@ -105,14 +352,159 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     "Avisos antes de evaluaciones",
                     style: TextStyle(
                       fontSize: 12,
-                      color:
-                          theme.colorScheme.onSurface.withValues(alpha: 0.55),
+                      color: theme.colorScheme.onSurface
+                          .withValues(alpha: 0.55),
                     ),
                   ),
                   value: _reminderEnabled,
                   onChanged: _notificationsEnabled
-                      ? (v) => setState(() => _reminderEnabled = v)
+                      ? (v) async {
+                          final prefs =
+                              await SharedPreferences.getInstance();
+                          await prefs.setBool('reminderEnabled', v);
+                          setState(() => _reminderEnabled = v);
+                        }
                       : null,
+                ),
+              ],
+            ),
+          ),
+
+          _SectionLabel(label: "Académico"),
+          const SizedBox(height: 8),
+
+          Card(
+            child: Column(
+              children: [
+                ListTile(
+                  leading: Icon(
+                    Icons.bar_chart_outlined,
+                    color: theme.colorScheme.primary,
+                  ),
+                  title: const Text(
+                    "Escala de calificaciones",
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  subtitle: Text(
+                    "Máx: ${_maxGrade.toStringAsFixed(1)} · "
+                    "Aprueba: ${_minPassingGrade.toStringAsFixed(1)} · "
+                    "Mín: ${_minValidGrade.toStringAsFixed(1)}",
+                  ),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: _openMaxGradeDialog,
+                ),
+
+                Divider(
+                  height: 1,
+                  indent: 16,
+                  endIndent: 16,
+                  color: theme.colorScheme.outline.withValues(alpha: 0.2),
+                ),
+
+                SwitchListTile(
+                  secondary: Icon(
+                    Icons.rounded_corner,
+                    color: theme.colorScheme.primary,
+                  ),
+                  title: const Text(
+                    "Redondear notas",
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  subtitle: Text(
+                    "Redondeo automático a 1 o 2 decimales",
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: theme.colorScheme.onSurface
+                          .withValues(alpha: 0.55),
+                    ),
+                  ),
+                  value: _roundGrades,
+                  onChanged: (v) async {
+                    final prefs =
+                        await SharedPreferences.getInstance();
+                    await prefs.setBool('roundGrades', v);
+                    setState(() => _roundGrades = v);
+                  },
+                ),
+
+                Divider(
+                  height: 1,
+                  indent: 16,
+                  endIndent: 16,
+                  color: theme.colorScheme.outline.withValues(alpha: 0.2),
+                ),
+
+                ListTile(
+                  leading: Icon(
+                    Icons.event_available_outlined,
+                    color: theme.colorScheme.primary,
+                  ),
+                  title: const Text(
+                    "Fin de semestre",
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  subtitle: Text(
+                    _semesterEnd != null
+                        ? "${_semesterEnd!.day}/${_semesterEnd!.month}/${_semesterEnd!.year}"
+                        : "No definido",
+                  ),
+                  onTap: _pickSemesterEnd,
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 24),
+
+          _SectionLabel(label: "Datos"),
+          const SizedBox(height: 8),
+
+          Card(
+            child: Column(
+              children: [
+                ListTile(
+                  leading: Icon(
+                    Icons.download_outlined,
+                    color: theme.colorScheme.primary,
+                  ),
+                  title: const Text(
+                    "Exportar datos",
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  subtitle: Text(
+                    "Guardar respaldo de materias y tareas",
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: theme.colorScheme.onSurface
+                          .withValues(alpha: 0.55),
+                    ),
+                  ),
+                  onTap: _exportData,
+                ),
+
+                Divider(
+                  height: 1,
+                  indent: 16,
+                  endIndent: 16,
+                  color: theme.colorScheme.outline.withValues(alpha: 0.2),
+                ),
+
+                ListTile(
+                  leading: Icon(
+                    Icons.delete_forever_outlined,
+                    color: theme.colorScheme.error,
+                  ),
+                  title: Text(
+                    "Restablecer aplicación",
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: theme.colorScheme.error,
+                    ),
+                  ),
+                  subtitle: const Text(
+                    "Eliminar materias, tareas, notas y datos locales",
+                  ),
+                  onTap: _confirmReset,
                 ),
               ],
             ),
@@ -131,20 +523,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   label: "Versión",
                   value: "1.0.0",
                 ),
-
                 Divider(
                   height: 1,
                   indent: 16,
                   endIndent: 16,
                   color: theme.colorScheme.outline.withValues(alpha: 0.2),
                 ),
-
                 _InfoRow(
                   icon: Icons.school_outlined,
                   label: "Institución",
                   value: "Universidad Tecnológica de Bolívar",
                 ),
-
               ],
             ),
           ),

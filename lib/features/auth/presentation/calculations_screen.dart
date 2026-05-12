@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../../auth/domain/grade_config.dart';
 
 class CalculationsScreen extends StatelessWidget {
   const CalculationsScreen({super.key});
@@ -26,10 +28,6 @@ class CalculationsScreen extends StatelessWidget {
         const SizedBox(height: 20),
 
         const _NotaCorteCard(),
-        const SizedBox(height: 12),
-        const _DefinitivaCorteCard(),
-        const SizedBox(height: 12),
-        const _DefinitivaMateriaCard(),
         const SizedBox(height: 12),
         const _NotaAprobatoriaCard(),
         const SizedBox(height: 12),
@@ -139,8 +137,14 @@ class _ResultBox extends StatelessWidget {
   final String label;
   final String value;
   final Color? color;
+  final bool isError;
 
-  const _ResultBox({required this.label, required this.value, this.color});
+  const _ResultBox({
+    required this.label,
+    required this.value,
+    this.color,
+    this.isError = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -149,21 +153,40 @@ class _ResultBox extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+      padding: EdgeInsets.symmetric(
+        vertical: isError ? 12 : 14,
+        horizontal: 16,
+      ),
       decoration: BoxDecoration(
-        color: c.withValues(alpha: 0.1),
+        color: isError
+            ? c.withValues(alpha: 0.14)
+            : c.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(14),
+        border: isError
+            ? Border.all(
+                color: c.withValues(alpha: 0.45),
+              )
+            : null,
       ),
       child: Column(
         children: [
-          Text(label,
-              style: theme.textTheme.bodyMedium
-                  ?.copyWith(fontSize: 12, color: c)),
+          Text(
+            label,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontSize: isError ? 11 : 12,
+              color: c,
+              fontWeight: isError ? FontWeight.w600 : FontWeight.w500,
+            ),
+          ),
           const SizedBox(height: 4),
           Text(
             value,
+            textAlign: TextAlign.center,
             style: TextStyle(
-                fontSize: 28, fontWeight: FontWeight.w800, color: c),
+              fontSize: isError ? 16 : 28,
+              fontWeight: isError ? FontWeight.w700 : FontWeight.w800,
+              color: c,
+            ),
           ),
         ],
       ),
@@ -180,31 +203,52 @@ class _NumField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return TextFormField(
       controller: ctrl,
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      inputFormatters: [
+        FilteringTextInputFormatter.allow(
+          RegExp(r'^\d*\.?\d{0,2}'),
+        ),
+      ],
       decoration: InputDecoration(
-        labelText: label,
+        hintText: label,
+        hintStyle: TextStyle(
+          color: theme.colorScheme.onSurface.withValues(alpha: 0.35),
+          fontSize: 14,
+        ),
         prefixIcon: icon != null ? Icon(icon) : null,
-        border:
-            OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-        contentPadding:
-            const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+        contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
       ),
     );
   }
 }
 
-Color _colorForGrade(double g) {
-  if (g >= 4.0) return Colors.green.shade500;
-  if (g >= 3.0) return Colors.orange.shade500;
+Color _colorForGrade(
+  double g, {
+  required double minValidGrade,
+  required double minPassingGrade,
+}) {
+  if (g >= minPassingGrade) return Colors.green.shade500;
+  if (g >= minValidGrade) return Colors.orange.shade500;
   return Colors.red.shade400;
 }
 
-Color _colorForNeeded(double n) {
-  if (n >= 4.5) return Colors.red.shade400;
-  if (n >= 3.5) return Colors.orange.shade500;
-  return Colors.green.shade500;
+Color _colorForNeeded(
+  double n, {
+  required double minPassingGrade,
+  required double maxGrade,
+}) {
+  if (n <= minPassingGrade) return Colors.green.shade500;
+  if (n <= maxGrade) return Colors.orange.shade500;
+  return Colors.red.shade400;
+}
+
+bool _isValidPercent(double value) {
+  return value > 0 && value <= 100;
 }
 
 class _NotaCorteCard extends StatefulWidget {
@@ -219,6 +263,24 @@ class _NotaCorteCardState extends State<_NotaCorteCard> {
   final List<TextEditingController> _pesoCtrls = [TextEditingController()];
   String _result = '';
   Color? _resultColor;
+  bool _isError = false;
+
+  double _maxGrade = 5.0;
+  double _minPassingGrade = 3.0;
+  double _minValidGrade = 0.0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadGradeConfig();
+  }
+
+  Future<void> _loadGradeConfig() async {
+    _maxGrade = await GradeConfig.getMaxGrade();
+    _minPassingGrade = await GradeConfig.getMinPassingGrade();
+    _minValidGrade = await GradeConfig.getMinValidGrade();
+    setState(() {});
+  }
 
   void _addRow() {
     setState(() {
@@ -241,19 +303,29 @@ class _NotaCorteCardState extends State<_NotaCorteCard> {
     double total = 0;
     double pesoTotal = 0;
     for (int i = 0; i < _notaCtrls.length; i++) {
-      final nota = double.tryParse(_notaCtrls[i].text);
-      final peso = double.tryParse(_pesoCtrls[i].text);
+      final nota = double.tryParse(_notaCtrls[i].text.trim());
+      final peso = double.tryParse(_pesoCtrls[i].text.trim());
       if (nota == null || peso == null) {
         setState(() {
           _result = 'Completa todos los campos';
           _resultColor = Colors.orange.shade500;
+          _isError = true;
         });
         return;
       }
-      if (nota < 0 || nota > 5) {
+      if (nota < _minValidGrade || nota > _maxGrade) {
         setState(() {
-          _result = 'Las notas deben estar entre 0.0 y 5.0';
+          _result = 'Las notas deben estar entre $_minValidGrade y $_maxGrade';
           _resultColor = Colors.red.shade400;
+          _isError = true;
+        });
+        return;
+      }
+      if (!_isValidPercent(peso)) {
+        setState(() {
+          _result = 'Los porcentajes deben ser mayores a 0 y hasta 100';
+          _resultColor = Colors.red.shade400;
+          _isError = true;
         });
         return;
       }
@@ -263,14 +335,18 @@ class _NotaCorteCardState extends State<_NotaCorteCard> {
     if ((pesoTotal - 100).abs() > 0.01) {
       setState(() {
         _result =
-            'Los pesos deben sumar 100% (actual: ${pesoTotal.toStringAsFixed(1)}%)';
+            'Los porcentajes deben sumar 100% (actual: ${pesoTotal.toStringAsFixed(1)}%)';
         _resultColor = Colors.orange.shade500;
+        _isError = true;
       });
       return;
     }
     setState(() {
       _result = total.toStringAsFixed(2);
-      _resultColor = _colorForGrade(total);
+      _resultColor = _colorForGrade(total,
+          minValidGrade: _minValidGrade,
+          minPassingGrade: _minPassingGrade);
+      _isError = false;
     });
   }
 
@@ -288,8 +364,8 @@ class _NotaCorteCardState extends State<_NotaCorteCard> {
 
     return _CalcCard(
       icon: Icons.bar_chart_outlined,
-      title: "Nota de corte",
-      subtitle: "Suma ponderada de actividades",
+      title: "Notas ponderadas",
+      subtitle: "Calcula cortes o definitivas por porcentaje",
       gradient: const [Color(0xFF2563EB), Color(0xFF1D4ED8)],
       content: Column(
         children: [
@@ -353,323 +429,11 @@ class _NotaCorteCardState extends State<_NotaCorteCard> {
           if (_result.isNotEmpty) ...[
             const SizedBox(height: 12),
             _ResultBox(
-                label: "Nota del corte",
-                value: _result,
-                color: _resultColor),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _DefinitivaCorteCard extends StatefulWidget {
-  const _DefinitivaCorteCard();
-
-  @override
-  State<_DefinitivaCorteCard> createState() => _DefinitivaCorteCardState();
-}
-
-class _DefinitivaCorteCardState extends State<_DefinitivaCorteCard> {
-  final List<TextEditingController> _notaCtrls = [TextEditingController()];
-  final List<TextEditingController> _creditCtrls = [TextEditingController()];
-  String _result = '';
-  Color? _resultColor;
-
-  void _addRow() {
-    setState(() {
-      _notaCtrls.add(TextEditingController());
-      _creditCtrls.add(TextEditingController());
-    });
-  }
-
-  void _removeRow(int i) {
-    if (_notaCtrls.length == 1) return;
-    setState(() {
-      _notaCtrls[i].dispose();
-      _creditCtrls[i].dispose();
-      _notaCtrls.removeAt(i);
-      _creditCtrls.removeAt(i);
-    });
-  }
-
-  void _calculate() {
-    double sumaNC = 0;
-    double sumaC = 0;
-    for (int i = 0; i < _notaCtrls.length; i++) {
-      final nota = double.tryParse(_notaCtrls[i].text);
-      final cred = double.tryParse(_creditCtrls[i].text);
-      if (nota == null || cred == null) {
-        setState(() {
-          _result = 'Completa todos los campos';
-          _resultColor = Colors.orange.shade500;
-        });
-        return;
-      }
-      if (nota < 0 || nota > 5) {
-        setState(() {
-          _result = 'Las notas deben estar entre 0.0 y 5.0';
-          _resultColor = Colors.red.shade400;
-        });
-        return;
-      }
-      if (cred <= 0) {
-        setState(() {
-          _result = 'Los créditos deben ser mayores a 0';
-          _resultColor = Colors.red.shade400;
-        });
-        return;
-      }
-      sumaNC += nota * cred;
-      sumaC += cred;
-    }
-    final def = sumaNC / sumaC;
-    setState(() {
-      _result = def.toStringAsFixed(2);
-      _resultColor = _colorForGrade(def);
-    });
-  }
-
-  @override
-  void dispose() {
-    for (final c in [..._notaCtrls, ..._creditCtrls]) {
-      c.dispose();
-    }
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return _CalcCard(
-      icon: Icons.summarize_outlined,
-      title: "Definitiva de corte",
-      subtitle: "Promedio ponderado por créditos",
-      gradient: const [Color(0xFF9333EA), Color(0xFFA855F7)],
-      content: Column(
-        children: [
-          const Divider(height: 20),
-          Row(
-            children: [
-              Expanded(
-                flex: 5,
-                child: Text("Nota",
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                        fontSize: 12,
-                        color: theme.colorScheme.onSurface
-                            .withValues(alpha: 0.5))),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                flex: 4,
-                child: Text("Créditos",
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                        fontSize: 12,
-                        color: theme.colorScheme.onSurface
-                            .withValues(alpha: 0.5))),
-              ),
-              const SizedBox(width: 32),
-            ],
-          ),
-          const SizedBox(height: 8),
-          ...List.generate(_notaCtrls.length, (i) {
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Row(
-                children: [
-                  Expanded(
-                      flex: 5,
-                      child: _NumField(ctrl: _notaCtrls[i], label: 'Ej: 3.8')),
-                  const SizedBox(width: 8),
-                  Expanded(
-                      flex: 4,
-                      child:
-                          _NumField(ctrl: _creditCtrls[i], label: 'Ej: 3')),
-                  const SizedBox(width: 4),
-                  IconButton(
-                    icon: Icon(Icons.remove_circle_outline,
-                        color: _notaCtrls.length > 1
-                            ? theme.colorScheme.error
-                            : theme.colorScheme.outline
-                                .withValues(alpha: 0.3),
-                        size: 20),
-                    onPressed: () => _removeRow(i),
-                  ),
-                ],
-              ),
-            );
-          }),
-          TextButton.icon(
-            onPressed: _addRow,
-            icon: const Icon(Icons.add, size: 18),
-            label: const Text("Agregar materia"),
-          ),
-          const SizedBox(height: 8),
-          _CalcButton(onPressed: _calculate),
-          if (_result.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            _ResultBox(
-                label: "Definitiva del corte",
-                value: _result,
-                color: _resultColor),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _DefinitivaMateriaCard extends StatefulWidget {
-  const _DefinitivaMateriaCard();
-
-  @override
-  State<_DefinitivaMateriaCard> createState() =>
-      _DefinitivaMateriaCardState();
-}
-
-class _DefinitivaMateriaCardState extends State<_DefinitivaMateriaCard> {
-  final List<TextEditingController> _notaCtrls = [TextEditingController()];
-  final List<TextEditingController> _pesoCtrls = [TextEditingController()];
-  String _result = '';
-  Color? _resultColor;
-
-  void _addRow() {
-    setState(() {
-      _notaCtrls.add(TextEditingController());
-      _pesoCtrls.add(TextEditingController());
-    });
-  }
-
-  void _removeRow(int i) {
-    if (_notaCtrls.length == 1) return;
-    setState(() {
-      _notaCtrls[i].dispose();
-      _pesoCtrls[i].dispose();
-      _notaCtrls.removeAt(i);
-      _pesoCtrls.removeAt(i);
-    });
-  }
-
-  void _calculate() {
-    double total = 0;
-    double pesoTotal = 0;
-    for (int i = 0; i < _notaCtrls.length; i++) {
-      final nota = double.tryParse(_notaCtrls[i].text);
-      final peso = double.tryParse(_pesoCtrls[i].text);
-      if (nota == null || peso == null) {
-        setState(() {
-          _result = 'Completa todos los campos';
-          _resultColor = Colors.orange.shade500;
-        });
-        return;
-      }
-      if (nota < 0 || nota > 5) {
-        setState(() {
-          _result = 'Las notas deben estar entre 0.0 y 5.0';
-          _resultColor = Colors.red.shade400;
-        });
-        return;
-      }
-      total += nota * (peso / 100);
-      pesoTotal += peso;
-    }
-    if ((pesoTotal - 100).abs() > 0.01) {
-      setState(() {
-        _result =
-            'Los porcentajes deben sumar 100% (actual: ${pesoTotal.toStringAsFixed(1)}%)';
-        _resultColor = Colors.orange.shade500;
-      });
-      return;
-    }
-    setState(() {
-      _result = total.toStringAsFixed(2);
-      _resultColor = _colorForGrade(total);
-    });
-  }
-
-  @override
-  void dispose() {
-    for (final c in [..._notaCtrls, ..._pesoCtrls]) {
-      c.dispose();
-    }
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return _CalcCard(
-      icon: Icons.book_outlined,
-      title: "Definitiva de materia",
-      subtitle: "Nota final desde los cortes por porcentaje",
-      gradient: const [Color(0xFF0284C7), Color(0xFF0EA5E9)],
-      content: Column(
-        children: [
-          const Divider(height: 20),
-          Row(
-            children: [
-              Expanded(
-                flex: 5,
-                child: Text("Nota corte",
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                        fontSize: 12,
-                        color: theme.colorScheme.onSurface
-                            .withValues(alpha: 0.5))),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                flex: 4,
-                child: Text("Peso %",
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                        fontSize: 12,
-                        color: theme.colorScheme.onSurface
-                            .withValues(alpha: 0.5))),
-              ),
-              const SizedBox(width: 32),
-            ],
-          ),
-          const SizedBox(height: 8),
-          ...List.generate(_notaCtrls.length, (i) {
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Row(
-                children: [
-                  Expanded(
-                      flex: 5,
-                      child: _NumField(ctrl: _notaCtrls[i], label: 'Ej: 3.8')),
-                  const SizedBox(width: 8),
-                  Expanded(
-                      flex: 4,
-                      child: _NumField(ctrl: _pesoCtrls[i], label: 'Ej: 30')),
-                  const SizedBox(width: 4),
-                  IconButton(
-                    icon: Icon(Icons.remove_circle_outline,
-                        color: _notaCtrls.length > 1
-                            ? theme.colorScheme.error
-                            : theme.colorScheme.outline
-                                .withValues(alpha: 0.3),
-                        size: 20),
-                    onPressed: () => _removeRow(i),
-                  ),
-                ],
-              ),
-            );
-          }),
-          TextButton.icon(
-            onPressed: _addRow,
-            icon: const Icon(Icons.add, size: 18),
-            label: const Text("Agregar corte"),
-          ),
-          const SizedBox(height: 8),
-          _CalcButton(onPressed: _calculate),
-          if (_result.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            _ResultBox(
-                label: "Definitiva de la materia",
-                value: _result,
-                color: _resultColor),
+              label: _isError ? "Error" : "Resultado",
+              value: _result,
+              color: _resultColor,
+              isError: _isError,
+            ),
           ],
         ],
       ),
@@ -689,9 +453,26 @@ class _NotaAprobatoriaCardState extends State<_NotaAprobatoriaCard> {
   final _p1Ctrl = TextEditingController();
   final _n2Ctrl = TextEditingController();
   final _p2Ctrl = TextEditingController();
-  final _pRestCtrl = TextEditingController();
   String _result = '';
   Color? _resultColor;
+  bool _isError = false;
+
+  double _maxGrade = 5.0;
+  double _minPassingGrade = 3.0;
+  double _minValidGrade = 0.0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadGradeConfig();
+  }
+
+  Future<void> _loadGradeConfig() async {
+    _maxGrade = await GradeConfig.getMaxGrade();
+    _minPassingGrade = await GradeConfig.getMinPassingGrade();
+    _minValidGrade = await GradeConfig.getMinValidGrade();
+    setState(() {});
+  }
 
   @override
   void dispose() {
@@ -699,51 +480,84 @@ class _NotaAprobatoriaCardState extends State<_NotaAprobatoriaCard> {
     _p1Ctrl.dispose();
     _n2Ctrl.dispose();
     _p2Ctrl.dispose();
-    _pRestCtrl.dispose();
     super.dispose();
   }
 
   void _calculate() {
-    final n1 = double.tryParse(_n1Ctrl.text);
-    final p1 = double.tryParse(_p1Ctrl.text);
-    final n2 = double.tryParse(_n2Ctrl.text);
-    final p2 = double.tryParse(_p2Ctrl.text);
-    final pRest = double.tryParse(_pRestCtrl.text);
+    final n1 = double.tryParse(_n1Ctrl.text.trim());
+    final p1 = double.tryParse(_p1Ctrl.text.trim());
+    final n2 = double.tryParse(_n2Ctrl.text.trim());
+    final p2 = double.tryParse(_p2Ctrl.text.trim());
 
-    if (n1 == null || p1 == null || n2 == null ||
-        p2 == null || pRest == null) {
+    if (n1 == null || p1 == null || n2 == null || p2 == null) {
       setState(() {
         _result = 'Completa todos los campos';
         _resultColor = Colors.orange.shade500;
+        _isError = true;
+      });
+      return;
+    }
+    if (n1 < _minValidGrade || n1 > _maxGrade || n2 < _minValidGrade || n2 > _maxGrade) {
+      setState(() {
+        _result = 'Las notas deben estar entre $_minValidGrade y $_maxGrade';
+        _resultColor = Colors.red.shade400;
+        _isError = true;
+      });
+      return;
+    }
+    if (!_isValidPercent(p1) || !_isValidPercent(p2)) {
+      setState(() {
+        _result = 'Los porcentajes deben ser mayores a 0 y hasta 100';
+        _resultColor = Colors.red.shade400;
+        _isError = true;
+      });
+      return;
+    }
+    if (p1 + p2 >= 100) {
+      setState(() {
+        _result = 'Los porcentajes deben sumar menos de 100';
+        _resultColor = Colors.red.shade400;
+        _isError = true;
       });
       return;
     }
 
-    final needed =
-        (3.0 - n1 * (p1 / 100) - n2 * (p2 / 100)) / (pRest / 100);
+    final pRest = 100 - p1 - p2;
+    final needed = (_minPassingGrade - n1 * (p1 / 100) - n2 * (p2 / 100)) / (pRest / 100);
 
-    if (needed <= 0) {
+    if (needed <= _minValidGrade) {
       setState(() {
         _result = 'Ya tienes el mínimo garantizado';
         _resultColor = Colors.green.shade500;
+        _isError = false;
       });
       return;
     }
-    if (needed > 5.0) {
+    if (needed > _maxGrade) {
       setState(() {
-        _result = 'No es posible aprobar con 5.0';
+        _result = 'No es posible aprobar con $_maxGrade';
         _resultColor = Colors.red.shade400;
+        _isError = true;
       });
       return;
     }
     setState(() {
       _result = needed.toStringAsFixed(2);
-      _resultColor = _colorForNeeded(needed);
+      _resultColor = _colorForNeeded(needed,
+          minPassingGrade: _minPassingGrade, maxGrade: _maxGrade);
+      _isError = false;
     });
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final p1 = double.tryParse(_p1Ctrl.text.trim());
+    final p2 = double.tryParse(_p2Ctrl.text.trim());
+    final pRest = (p1 != null && p2 != null && (p1 + p2) < 100)
+        ? 100 - p1 - p2
+        : null;
+
     return _CalcCard(
       icon: Icons.trending_up_outlined,
       title: "Mínimo para aprobar",
@@ -769,16 +583,25 @@ class _NotaAprobatoriaCardState extends State<_NotaAprobatoriaCard> {
               Expanded(child: _NumField(ctrl: _p2Ctrl, label: '% corte 2')),
             ],
           ),
-          const SizedBox(height: 10),
-          _NumField(ctrl: _pRestCtrl, label: '% restante (corte final)'),
+          if (pRest != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              'El corte final tendrá ${pRest.toStringAsFixed(0)}%',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.primary,
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
           _CalcButton(onPressed: _calculate),
           if (_result.isNotEmpty) ...[
             const SizedBox(height: 12),
             _ResultBox(
-                label: "Nota mínima en corte final",
-                value: _result,
-                color: _resultColor),
+              label: _isError ? "Error" : "Nota mínima en corte final",
+              value: _result,
+              color: _resultColor,
+              isError: _isError,
+            ),
           ],
         ],
       ),
@@ -799,9 +622,26 @@ class _NotaMetaCardState extends State<_NotaMetaCard> {
   final _p1Ctrl = TextEditingController();
   final _n2Ctrl = TextEditingController();
   final _p2Ctrl = TextEditingController();
-  final _pRestCtrl = TextEditingController();
   String _result = '';
   Color? _resultColor;
+  bool _isError = false;
+
+  double _maxGrade = 5.0;
+  double _minPassingGrade = 3.0;
+  double _minValidGrade = 0.0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadGradeConfig();
+  }
+
+  Future<void> _loadGradeConfig() async {
+    _maxGrade = await GradeConfig.getMaxGrade();
+    _minPassingGrade = await GradeConfig.getMinPassingGrade();
+    _minValidGrade = await GradeConfig.getMinValidGrade();
+    setState(() {});
+  }
 
   @override
   void dispose() {
@@ -810,60 +650,87 @@ class _NotaMetaCardState extends State<_NotaMetaCard> {
     _p1Ctrl.dispose();
     _n2Ctrl.dispose();
     _p2Ctrl.dispose();
-    _pRestCtrl.dispose();
     super.dispose();
   }
 
   void _calculate() {
-    final meta = double.tryParse(_metaCtrl.text);
-    final n1 = double.tryParse(_n1Ctrl.text);
-    final p1 = double.tryParse(_p1Ctrl.text);
-    final n2 = double.tryParse(_n2Ctrl.text);
-    final p2 = double.tryParse(_p2Ctrl.text);
-    final pRest = double.tryParse(_pRestCtrl.text);
+    final meta = double.tryParse(_metaCtrl.text.trim());
+    final n1 = double.tryParse(_n1Ctrl.text.trim());
+    final p1 = double.tryParse(_p1Ctrl.text.trim());
+    final n2 = double.tryParse(_n2Ctrl.text.trim());
+    final p2 = double.tryParse(_p2Ctrl.text.trim());
 
-    if (meta == null || n1 == null || p1 == null ||
-        n2 == null || p2 == null || pRest == null) {
+    if (meta == null || n1 == null || p1 == null || n2 == null || p2 == null) {
       setState(() {
         _result = 'Completa todos los campos';
         _resultColor = Colors.orange.shade500;
+        _isError = true;
       });
       return;
     }
-    if (meta < 0 || meta > 5) {
+    if (meta < _minValidGrade || meta > _maxGrade ||
+        n1 < _minValidGrade || n1 > _maxGrade ||
+        n2 < _minValidGrade || n2 > _maxGrade) {
       setState(() {
-        _result = 'La meta debe estar entre 0.0 y 5.0';
+        _result = 'Las notas deben estar entre $_minValidGrade y $_maxGrade';
         _resultColor = Colors.red.shade400;
+        _isError = true;
+      });
+      return;
+    }
+    if (!_isValidPercent(p1) || !_isValidPercent(p2)) {
+      setState(() {
+        _result = 'Los porcentajes deben ser mayores a 0 y hasta 100';
+        _resultColor = Colors.red.shade400;
+        _isError = true;
+      });
+      return;
+    }
+    if (p1 + p2 >= 100) {
+      setState(() {
+        _result = 'Los porcentajes deben sumar menos de 100';
+        _resultColor = Colors.red.shade400;
+        _isError = true;
       });
       return;
     }
 
-    final needed =
-        (meta - n1 * (p1 / 100) - n2 * (p2 / 100)) / (pRest / 100);
+    final pRest = 100 - p1 - p2;
+    final needed = (meta - n1 * (p1 / 100) - n2 * (p2 / 100)) / (pRest / 100);
 
-    if (needed <= 0) {
+    if (needed <= _minValidGrade) {
       setState(() {
         _result = 'Ya tienes la meta garantizada';
         _resultColor = Colors.green.shade500;
+        _isError = false;
       });
       return;
     }
-    if (needed > 5.0) {
+    if (needed > _maxGrade) {
       setState(() {
-        _result =
-            'No es posible alcanzar ${meta.toStringAsFixed(2)} con 5.0';
+        _result = 'No es posible alcanzar ${meta.toStringAsFixed(2)} con $_maxGrade';
         _resultColor = Colors.red.shade400;
+        _isError = true;
       });
       return;
     }
     setState(() {
       _result = needed.toStringAsFixed(2);
-      _resultColor = _colorForNeeded(needed);
+      _resultColor = _colorForNeeded(needed,
+          minPassingGrade: _minPassingGrade, maxGrade: _maxGrade);
+      _isError = false;
     });
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final p1 = double.tryParse(_p1Ctrl.text.trim());
+    final p2 = double.tryParse(_p2Ctrl.text.trim());
+    final pRest = (p1 != null && p2 != null && (p1 + p2) < 100)
+        ? 100 - p1 - p2
+        : null;
+
     return _CalcCard(
       icon: Icons.flag_outlined,
       title: "Nota para mi meta",
@@ -874,7 +741,7 @@ class _NotaMetaCardState extends State<_NotaMetaCard> {
           const Divider(height: 20),
           _NumField(
             ctrl: _metaCtrl,
-            label: 'Meta deseada (0.0 – 5.0)',
+            label: 'Meta deseada ($_minValidGrade – $_maxGrade)',
             icon: Icons.flag_outlined,
           ),
           const SizedBox(height: 10),
@@ -895,16 +762,25 @@ class _NotaMetaCardState extends State<_NotaMetaCard> {
               Expanded(child: _NumField(ctrl: _p2Ctrl, label: '% corte 2')),
             ],
           ),
-          const SizedBox(height: 10),
-          _NumField(ctrl: _pRestCtrl, label: '% restante (corte final)'),
+          if (pRest != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              'El corte final tendrá ${pRest.toStringAsFixed(0)}%',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.primary,
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
           _CalcButton(onPressed: _calculate),
           if (_result.isNotEmpty) ...[
             const SizedBox(height: 12),
             _ResultBox(
-                label: "Nota necesaria en corte final",
-                value: _result,
-                color: _resultColor),
+              label: _isError ? "Error" : "Nota necesaria en corte final",
+              value: _result,
+              color: _resultColor,
+              isError: _isError,
+            ),
           ],
         ],
       ),
@@ -924,6 +800,29 @@ class _PPACardState extends State<_PPACard> {
   final List<TextEditingController> _creditCtrls = [TextEditingController()];
   String _result = '';
   Color? _resultColor;
+  bool _isError = false;
+
+  double _maxGrade = 5.0;
+  double _minPassingGrade = 3.0;
+  double _minValidGrade = 0.0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadGradeConfig();
+  }
+
+  Future<void> _loadGradeConfig() async {
+    _maxGrade = await GradeConfig.getMaxGrade();
+    _minPassingGrade = await GradeConfig.getMinPassingGrade();
+    _minValidGrade = await GradeConfig.getMinValidGrade();
+
+    debugPrint('Máx: $_maxGrade');
+    debugPrint('Aprueba: $_minPassingGrade');
+    debugPrint('Mín: $_minValidGrade');
+
+    setState(() {});
+  }
 
   void _addRow() {
     setState(() {
@@ -946,19 +845,21 @@ class _PPACardState extends State<_PPACard> {
     double sumaNC = 0;
     double sumaC = 0;
     for (int i = 0; i < _notaCtrls.length; i++) {
-      final nota = double.tryParse(_notaCtrls[i].text);
-      final cred = double.tryParse(_creditCtrls[i].text);
+      final nota = double.tryParse(_notaCtrls[i].text.trim());
+      final cred = double.tryParse(_creditCtrls[i].text.trim());
       if (nota == null || cred == null) {
         setState(() {
           _result = 'Completa todos los campos';
           _resultColor = Colors.orange.shade500;
+          _isError = true;
         });
         return;
       }
-      if (nota < 0 || nota > 5) {
+      if (nota < _minValidGrade || nota > _maxGrade) {
         setState(() {
-          _result = 'Las notas deben estar entre 0.0 y 5.0';
+          _result = 'Las notas deben estar entre $_minValidGrade y $_maxGrade';
           _resultColor = Colors.red.shade400;
+          _isError = true;
         });
         return;
       }
@@ -966,16 +867,28 @@ class _PPACardState extends State<_PPACard> {
         setState(() {
           _result = 'Los créditos deben ser mayores a 0';
           _resultColor = Colors.red.shade400;
+          _isError = true;
         });
         return;
       }
       sumaNC += nota * cred;
       sumaC += cred;
     }
+    if (sumaC == 0) {
+      setState(() {
+        _result = 'La suma de créditos no puede ser 0';
+        _resultColor = Colors.red.shade400;
+        _isError = true;
+      });
+      return;
+    }
     final ppa = sumaNC / sumaC;
     setState(() {
       _result = ppa.toStringAsFixed(2);
-      _resultColor = _colorForGrade(ppa);
+      _resultColor = _colorForGrade(ppa,
+          minValidGrade: _minValidGrade,
+          minPassingGrade: _minPassingGrade);
+      _isError = false;
     });
   }
 
@@ -993,8 +906,8 @@ class _PPACardState extends State<_PPACard> {
 
     return _CalcCard(
       icon: Icons.school_outlined,
-      title: "PPA",
-      subtitle: "Promedio Ponderado Acumulado por créditos",
+      title: "Promedio por créditos",
+      subtitle: "Calcula PPA o promedios ponderados",
       gradient: const [Color(0xFF0891B2), Color(0xFF06B6D4)],
       content: Column(
         children: [
@@ -1058,7 +971,12 @@ class _PPACardState extends State<_PPACard> {
           _CalcButton(onPressed: _calculate),
           if (_result.isNotEmpty) ...[
             const SizedBox(height: 12),
-            _ResultBox(label: "PPA", value: _result, color: _resultColor),
+            _ResultBox(
+              label: _isError ? "Error" : "Promedio",
+              value: _result,
+              color: _resultColor,
+              isError: _isError,
+            ),
           ],
         ],
       ),

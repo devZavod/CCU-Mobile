@@ -8,7 +8,10 @@ import 'home_screen.dart';
 class LoginScreen extends StatefulWidget {
   final VoidCallback onToggleTheme;
 
-  const LoginScreen({super.key, required this.onToggleTheme});
+  const LoginScreen({
+    super.key,
+    required this.onToggleTheme,
+  });
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -67,12 +70,13 @@ class _LoginScreenState extends State<LoginScreen> {
     if (mounted) setState(() => _loading = false);
 
     if (result['success']) {
-      // --- INICIO AJUSTE PARA GUARDAR SESIÓN ---
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('isLoggedIn', true);
       await prefs.setString('userName', result['name'] ?? "Estudiante");
-      await prefs.setString('userEmail', result['user']?['email'] ?? _emailController.text.trim());
-      // --- FIN AJUSTE ---
+      await prefs.setString(
+        'userEmail',
+        result['user']?['email'] ?? _emailController.text.trim(),
+      );
 
       if (mounted) {
         Navigator.pushReplacement(
@@ -81,7 +85,8 @@ class _LoginScreenState extends State<LoginScreen> {
             builder: (_) => HomeScreen(
               onToggleTheme: widget.onToggleTheme,
               userName: result['name'] ?? "Estudiante",
-              userEmail: result['user']?['email'] ?? _emailController.text.trim(),
+              userEmail:
+                  result['user']?['email'] ?? _emailController.text.trim(),
             ),
           ),
         );
@@ -140,7 +145,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     "Calendario y Calculadora Universitaria",
                     textAlign: TextAlign.center,
                     style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                      color:
+                          theme.colorScheme.onSurface.withValues(alpha: 0.7),
                     ),
                   ),
 
@@ -175,7 +181,8 @@ class _LoginScreenState extends State<LoginScreen> {
                               : Icons.visibility_off,
                         ),
                         onPressed: () {
-                          setState(() => _obscurePassword = !_obscurePassword);
+                          setState(
+                              () => _obscurePassword = !_obscurePassword);
                         },
                       ),
                       border: OutlineInputBorder(
@@ -193,7 +200,8 @@ class _LoginScreenState extends State<LoginScreen> {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: theme.colorScheme.primary,
                         foregroundColor: theme.colorScheme.onPrimary,
-                        padding: const EdgeInsets.symmetric(vertical: 18),
+                        padding:
+                            const EdgeInsets.symmetric(vertical: 18),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(16),
                         ),
@@ -209,7 +217,8 @@ class _LoginScreenState extends State<LoginScreen> {
                             )
                           : const Text(
                               "Ingresar",
-                              style: TextStyle(fontWeight: FontWeight.w600),
+                              style:
+                                  TextStyle(fontWeight: FontWeight.w600),
                             ),
                     ),
                   ),

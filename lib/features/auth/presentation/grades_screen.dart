@@ -1,4 +1,7 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../../auth/domain/grade_config.dart';
 
 class GradeActivity {
   final String id;
@@ -12,6 +15,24 @@ class GradeActivity {
     required this.grade,
     required this.weight,
   });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'name': name,
+      'grade': grade,
+      'weight': weight,
+    };
+  }
+
+  factory GradeActivity.fromMap(Map<String, dynamic> map) {
+    return GradeActivity(
+      id: map['id'],
+      name: map['name'],
+      grade: (map['grade'] as num).toDouble(),
+      weight: (map['weight'] as num).toDouble(),
+    );
+  }
 }
 
 class Cut {
@@ -35,6 +56,26 @@ class Cut {
 
   double get usedWeight =>
       activities.fold(0.0, (sum, a) => sum + a.weight);
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'name': name,
+      'weight': weight,
+      'activities': activities.map((a) => a.toMap()).toList(),
+    };
+  }
+
+  factory Cut.fromMap(Map<String, dynamic> map) {
+    return Cut(
+      id: map['id'],
+      name: map['name'],
+      weight: (map['weight'] as num).toDouble(),
+      activities: List<GradeActivity>.from(
+        (map['activities'] as List).map((a) => GradeActivity.fromMap(a)),
+      ),
+    );
+  }
 }
 
 class Subject {
@@ -59,7 +100,26 @@ class Subject {
   double get totalCutWeight =>
       cuts.fold(0.0, (sum, c) => sum + c.weight);
 
-  bool get isPassing => finalGrade >= 3.0;
+  bool isPassing(double minPassingGrade) =>
+      finalGrade >= minPassingGrade;
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'name': name,
+      'cuts': cuts.map((c) => c.toMap()).toList(),
+    };
+  }
+
+  factory Subject.fromMap(Map<String, dynamic> map) {
+    return Subject(
+      id: map['id'],
+      name: map['name'],
+      cuts: List<Cut>.from(
+        (map['cuts'] as List).map((c) => Cut.fromMap(c)),
+      ),
+    );
+  }
 }
 
 class GradesScreen extends StatefulWidget {
@@ -71,6 +131,53 @@ class GradesScreen extends StatefulWidget {
 
 class _GradesScreenState extends State<GradesScreen> {
   final List<Subject> _subjects = [];
+  double _maxGrade = 5.0;
+  double _minPassingGrade = 3.0;
+  double _minValidGrade = 0.0;
+
+  @override
+  void initState() {
+    super.initState();
+    _initialize();
+  }
+
+  Future<void> _initialize() async {
+    await _loadGradeConfig();
+    await _loadSubjects();
+  }
+
+  Future<void> _loadGradeConfig() async {
+    _maxGrade = await GradeConfig.getMaxGrade();
+    _minPassingGrade = await GradeConfig.getMinPassingGrade();
+    _minValidGrade = await GradeConfig.getMinValidGrade();
+
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  Future<void> _loadSubjects() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString('subjects_data');
+
+    if (raw == null) return;
+
+    final List decoded = jsonDecode(raw);
+    _subjects.clear();
+    _subjects.addAll(
+      decoded.map((e) => Subject.fromMap(e)).toList(),
+    );
+
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  Future<void> _saveSubjects() async {
+    final prefs = await SharedPreferences.getInstance();
+    final data = _subjects.map((s) => s.toMap()).toList();
+    await prefs.setString('subjects_data', jsonEncode(data));
+  }
 
   void _openAddSubject({Subject? existing}) {
     showModalBottomSheet(
@@ -91,6 +198,7 @@ class _GradesScreenState extends State<GradesScreen> {
               _subjects.add(subject);
             }
           });
+          _saveSubjects();
         },
       ),
     );
@@ -111,6 +219,7 @@ class _GradesScreenState extends State<GradesScreen> {
             onPressed: () {
               setState(() =>
                   _subjects.removeWhere((s) => s.id == subject.id));
+              _saveSubjects();
               Navigator.pop(context);
             },
             child: Text('Eliminar',
@@ -122,21 +231,40 @@ class _GradesScreenState extends State<GradesScreen> {
     );
   }
 
-  void _openDetail(Subject subject) {
-    Navigator.push(
+  Future<void> _openDetail(Subject subject) async {
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => _SubjectDetailPage(
           subject: subject,
-          onChanged: () => setState(() {}),
+          onChanged: () async {
+            setState(() {});
+            await _saveSubjects();
+          },
         ),
       ),
     );
+
+    await _loadGradeConfig();
+
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   Color _gradeColor(double grade, ColorScheme cs) {
-    if (grade >= 4.0) return Colors.green.shade500;
-    if (grade >= 3.0) return Colors.orange.shade500;
+    final excellentThreshold =
+        _minPassingGrade +
+        ((_maxGrade - _minPassingGrade) * 0.5);
+
+    if (grade >= excellentThreshold) {
+      return Colors.green.shade500;
+    }
+
+    if (grade >= _minPassingGrade) {
+      return Colors.orange.shade500;
+    }
+
     return cs.error;
   }
 
@@ -150,7 +278,7 @@ class _GradesScreenState extends State<GradesScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.calculate_outlined,
+                  Icon(Icons.school_outlined,
                       size: 72,
                       color: theme.colorScheme.primary
                           .withValues(alpha: 0.3)),
@@ -175,61 +303,183 @@ class _GradesScreenState extends State<GradesScreen> {
                 final grade = s.finalGrade;
                 final color = _gradeColor(grade, theme.colorScheme);
 
-                return Card(
-                  child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 8),
-                    onTap: () => _openDetail(s),
-                    title: Text(
-                      s.name,
-                      style: theme.textTheme.bodyMedium
-                          ?.copyWith(fontWeight: FontWeight.w600),
-                    ),
-                    subtitle: Text(
-                      '${s.cuts.length} cortes · '
-                      '${s.cuts.where((c) => c.activities.isNotEmpty).length} con notas',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        fontSize: 12,
-                        color: theme.colorScheme.onSurface
-                            .withValues(alpha: 0.55),
+                return InkWell(
+                  borderRadius: BorderRadius.circular(22),
+                  onTap: () => _openDetail(s),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(15),
+                      color: theme.colorScheme.surface,
+                      border: Border.all(
+                        color: color.withValues(alpha: 0.12),
                       ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.04),
+                          blurRadius: 10,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
                     ),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        
-                        Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(12),
+                                color: color.withValues(alpha: 0.10),
+                              ),
+                              child: Icon(
+                                Icons.menu_book_rounded,
+                                color: color,
+                                size: 15,
+                              ),
+                            ),
+
+                            const SizedBox(width: 10),
+
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    s.name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: theme.textTheme.bodyLarge?.copyWith(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+
+                                  const SizedBox(height: 6),
+
+                                  Text(
+                                    '${s.cuts.where((c) => c.activities.isNotEmpty).length} de ${s.cuts.length} cortes registrados',
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      fontSize: 12,
+                                      color: theme.colorScheme.onSurface
+                                          .withValues(alpha: 0.58),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                            PopupMenuButton<String>(
+                              splashRadius: 20,
+                              onSelected: (v) {
+                                if (v == 'edit') {
+                                  _openAddSubject(existing: s);
+                                }
+
+                                if (v == 'delete') {
+                                  _deleteSubject(s);
+                                }
+                              },
+                              itemBuilder: (_) => [
+                                const PopupMenuItem(
+                                  value: 'edit',
+                                  child: Text('Editar nombre'),
+                                ),
+                                const PopupMenuItem(
+                                  value: 'delete',
+                                  child: Text('Eliminar'),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+
+                        const SizedBox(height: 18),
+
+                        Row(
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
+
                             Text(
                               grade.toStringAsFixed(2),
                               style: TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.w700,
+                                fontSize: 30,
+                                height: 1,
+                                fontWeight: FontWeight.w800,
                                 color: color,
                               ),
                             ),
-                            Text(
-                              s.isPassing ? 'Aprobando' : 'En riesgo',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: color,
+
+                            const SizedBox(width: 10),
+
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 4),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 5,
+                                ),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(25),
+                                  color: color.withValues(alpha: 0.12),
+                                ),
+                                child: Text(
+                                  s.isPassing(_minPassingGrade)
+                                      ? 'Buen desempeño'
+                                      : 'En riesgo',
+                                  style: TextStyle(
+                                    color: color,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 10,
+                                  ),
+                                ),
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(width: 8),
-                        PopupMenuButton<String>(
-                          onSelected: (v) {
-                            if (v == 'edit') _openAddSubject(existing: s);
-                            if (v == 'delete') _deleteSubject(s);
-                          },
-                          itemBuilder: (_) => [
-                            const PopupMenuItem(
-                                value: 'edit', child: Text('Editar nombre')),
-                            const PopupMenuItem(
-                                value: 'delete', child: Text('Eliminar')),
+
+                        const SizedBox(height: 16),
+
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: LinearProgressIndicator(
+                            value: s.cuts.isEmpty
+                                ? 0
+                                : s.cuts
+                                        .where((c) => c.activities.isNotEmpty)
+                                        .length /
+                                    s.cuts.length,
+                            minHeight: 8,
+                            backgroundColor:
+                                theme.colorScheme.outline.withValues(alpha: 0.10),
+                            valueColor: AlwaysStoppedAnimation(color),
+                          ),
+                        ),
+
+                        const SizedBox(height: 10),
+
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Progreso académico',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurface
+                                    .withValues(alpha: 0.50),
+                              ),
+                            ),
+
+                            Text(
+                              '${s.cuts.fold<int>(0, (sum, c) => sum + c.activities.length)} actividades',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                fontWeight: FontWeight.w600,
+                                color: theme.colorScheme.onSurface
+                                    .withValues(alpha: 0.60),
+                              ),
+                            ),
                           ],
                         ),
                       ],
@@ -295,9 +545,20 @@ class _SubjectFormState extends State<_SubjectForm> {
   void _submit() {
     if (!_formKey.currentState!.validate()) return;
     if (!_weightsValid) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      ScaffoldMessenger.of(
+        Navigator.of(context).context,
+      ).hideCurrentSnackBar();
+
+      ScaffoldMessenger.of(
+        Navigator.of(context).context,
+      ).showSnackBar(
         const SnackBar(
-            content: Text('Los pesos de los cortes deben sumar 100%')),
+          behavior: SnackBarBehavior.floating,
+          margin: EdgeInsets.all(16),
+          content: Text(
+            'Los pesos de los cortes deben sumar 100%',
+          ),
+        ),
       );
       return;
     }
@@ -375,6 +636,12 @@ class _SubjectFormState extends State<_SubjectForm> {
               textCapitalization: TextCapitalization.words,
               decoration: InputDecoration(
                 labelText: 'Nombre de la materia *',
+                labelStyle: TextStyle(
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.42),
+                ),
+                floatingLabelStyle: TextStyle(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.9),
+                ),
                 prefixIcon: const Icon(Icons.book_outlined),
                 border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14)),
@@ -458,7 +725,7 @@ class _WeightField extends StatelessWidget {
 
 class _SubjectDetailPage extends StatefulWidget {
   final Subject subject;
-  final VoidCallback onChanged;
+  final Future<void> Function() onChanged;
 
   const _SubjectDetailPage(
       {required this.subject, required this.onChanged});
@@ -468,9 +735,29 @@ class _SubjectDetailPage extends StatefulWidget {
 }
 
 class _SubjectDetailPageState extends State<_SubjectDetailPage> {
-  void _rebuild() {
+  double _maxGrade = 5.0;
+  double _minPassingGrade = 3.0;
+  double _minValidGrade = 0.0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadGradeConfig();
+  }
+
+  Future<void> _loadGradeConfig() async {
+    _maxGrade = await GradeConfig.getMaxGrade();
+    _minPassingGrade = await GradeConfig.getMinPassingGrade();
+    _minValidGrade = await GradeConfig.getMinValidGrade();
+
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  Future<void> _rebuild() async {
     setState(() {});
-    widget.onChanged();
+    await widget.onChanged();
   }
 
   void _openAddActivity(Cut cut) {
@@ -518,16 +805,19 @@ class _SubjectDetailPageState extends State<_SubjectDetailPage> {
     widget.onChanged();
   }
 
-  void _openGoalCalculator() {
-    showDialog(
-      context: context,
-      builder: (_) => _GoalCalculatorDialog(subject: widget.subject),
-    );
-  }
-
   Color _gradeColor(double grade) {
-    if (grade >= 4.0) return Colors.green.shade500;
-    if (grade >= 3.0) return Colors.orange.shade500;
+    final excellentThreshold =
+        _minPassingGrade +
+        ((_maxGrade - _minPassingGrade) * 0.5);
+
+    if (grade >= excellentThreshold) {
+      return Colors.green.shade500;
+    }
+
+    if (grade >= _minPassingGrade) {
+      return Colors.orange.shade500;
+    }
+
     return Colors.red.shade400;
   }
 
@@ -542,20 +832,17 @@ class _SubjectDetailPageState extends State<_SubjectDetailPage> {
           subject.name,
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.flag_outlined),
-            tooltip: 'Calcular meta',
-            onPressed: _openGoalCalculator,
-          ),
-        ],
       ),
 
       body: ListView(
         padding:
             const EdgeInsets.only(top: 16, left: 16, right: 16, bottom: 24),
         children: [
-          _FinalGradeCard(subject: subject),
+          _FinalGradeCard(
+            subject: subject,
+            minPassingGrade: _minPassingGrade,
+            maxGrade: _maxGrade,
+          ),
           const SizedBox(height: 20),
 
           ...subject.cuts.map((cut) => _CutSection(
@@ -573,13 +860,19 @@ class _SubjectDetailPageState extends State<_SubjectDetailPage> {
 
 class _FinalGradeCard extends StatelessWidget {
   final Subject subject;
-  const _FinalGradeCard({required this.subject});
+  final double minPassingGrade;
+  final double maxGrade;
+
+  const _FinalGradeCard({
+    required this.subject,
+    required this.minPassingGrade,
+    required this.maxGrade,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final grade = subject.finalGrade;
-    final isPassing = subject.isPassing;
+    final isPassing = subject.isPassing(minPassingGrade);
 
     final List<Color> gradient = isPassing
         ? [const Color(0xFF059669), const Color(0xFF10B981)]
@@ -597,48 +890,36 @@ class _FinalGradeCard extends StatelessWidget {
           ),
         ),
         padding: const EdgeInsets.all(20),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Definitiva estimada',
-                    style: theme.textTheme.bodyMedium
-                        ?.copyWith(color: Colors.white70),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    grade.toStringAsFixed(2),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 42,
-                      fontWeight: FontWeight.w800,
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Definitiva estimada',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Colors.white70,
                     ),
-                  ),
-                  Text(
-                    isPassing ? '✓ Aprobando' : '✗ En riesgo',
-                    style: const TextStyle(
-                        color: Colors.white, fontWeight: FontWeight.w600),
-                  ),
-                ],
               ),
-            ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: subject.cuts.map((c) {
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Text(
-                    '${c.name}: ${c.grade.toStringAsFixed(2)} (${c.weight.toStringAsFixed(0)}%)',
-                    style: const TextStyle(
-                        color: Colors.white70, fontSize: 12),
-                  ),
-                );
-              }).toList(),
-            ),
-          ],
+              const SizedBox(height: 8),
+              Text(
+                grade.toStringAsFixed(2),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 46,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                isPassing ? 'Buen desempeño' : 'Riesgo académico',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -681,8 +962,7 @@ class _CutSection extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    'Nota del corte: ${cut.grade.toStringAsFixed(2)}  '
-                    '·  Peso usado: ${cut.usedWeight.toStringAsFixed(0)}%',
+                    'Nota del corte: ${cut.grade.toStringAsFixed(2)}',
                     style: theme.textTheme.bodyMedium?.copyWith(
                       fontSize: 12,
                       color: theme.colorScheme.onSurface
@@ -695,17 +975,17 @@ class _CutSection extends StatelessWidget {
             TextButton.icon(
               onPressed: remaining > 0 ? onAddActivity : null,
               icon: const Icon(Icons.add, size: 18),
-              label: const Text('Agregar'),
+              label: const Text('Agregar actividad'),
             ),
           ],
         ),
 
-        const SizedBox(height: 6),
+        const SizedBox(height: 12),
         ClipRRect(
           borderRadius: BorderRadius.circular(4),
           child: LinearProgressIndicator(
             value: cut.usedWeight / 100,
-            minHeight: 6,
+            minHeight: 9,
             backgroundColor:
                 theme.colorScheme.outline.withValues(alpha: 0.2),
             valueColor: AlwaysStoppedAnimation<Color>(
@@ -748,7 +1028,12 @@ class _CutSection extends StatelessWidget {
                 onDelete: () => onDeleteActivity(a),
               )),
 
-        const Divider(height: 28),
+        const SizedBox(height: 28),
+        Divider(
+          height: 1,
+          color: theme.colorScheme.outline.withValues(alpha: 0.15),
+        ),
+        const SizedBox(height: 12),
       ],
     );
   }
@@ -772,9 +1057,9 @@ class _ActivityTile extends StatelessWidget {
     final theme = Theme.of(context);
 
     return Card(
-      margin: const EdgeInsets.only(bottom: 6),
+      margin: const EdgeInsets.only(bottom: 10),
       child: ListTile(
-        dense: true,
+        dense: false,
         title: Text(
           activity.name,
           style: theme.textTheme.bodyMedium
@@ -831,15 +1116,28 @@ class _ActivityFormState extends State<_ActivityForm> {
   late final TextEditingController _gradeCtrl;
   late final TextEditingController _weightCtrl;
 
+  double _maxGrade = 5.0;
+  double _minValidGrade = 0.0;
+
   @override
   void initState() {
     super.initState();
+    _loadGradeConfig();
     final e = widget.existing;
     _nameCtrl = TextEditingController(text: e?.name ?? '');
     _gradeCtrl =
         TextEditingController(text: e != null ? e.grade.toString() : '');
     _weightCtrl = TextEditingController(
         text: e != null ? e.weight.toStringAsFixed(0) : '');
+  }
+
+  Future<void> _loadGradeConfig() async {
+    _maxGrade = await GradeConfig.getMaxGrade();
+    _minValidGrade = await GradeConfig.getMinValidGrade();
+
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   @override
@@ -923,6 +1221,12 @@ class _ActivityFormState extends State<_ActivityForm> {
               textCapitalization: TextCapitalization.sentences,
               decoration: InputDecoration(
                 labelText: 'Nombre de la actividad *',
+                labelStyle: TextStyle(
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.42),
+                ),
+                floatingLabelStyle: TextStyle(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.9),
+                ),
                 prefixIcon: const Icon(Icons.assignment_outlined),
                 border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14)),
@@ -942,7 +1246,13 @@ class _ActivityFormState extends State<_ActivityForm> {
                     keyboardType: const TextInputType.numberWithOptions(
                         decimal: true),
                     decoration: InputDecoration(
-                      labelText: 'Nota (0.0 – 5.0) *',
+                      labelText: 'Nota ($_minValidGrade – $_maxGrade) *',
+                      labelStyle: TextStyle(
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.42),
+                      ),
+                      floatingLabelStyle: TextStyle(
+                        color: theme.colorScheme.primary.withValues(alpha: 0.9),
+                      ),
                       prefixIcon: const Icon(Icons.grade_outlined),
                       border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(14)),
@@ -950,7 +1260,9 @@ class _ActivityFormState extends State<_ActivityForm> {
                     validator: (v) {
                       final n = double.tryParse(v ?? '');
                       if (n == null) return 'Nota inválida';
-                      if (n < 0 || n > 5) return 'Entre 0 y 5';
+                      if (n < _minValidGrade || n > _maxGrade) {
+                        return 'Rango $_minValidGrade - $_maxGrade';
+                      }
                       return null;
                     },
                   ),
@@ -964,13 +1276,20 @@ class _ActivityFormState extends State<_ActivityForm> {
                         decimal: true),
                     decoration: InputDecoration(
                       labelText: 'Peso % *',
+                      labelStyle: TextStyle(
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.42),
+                      ),
+                      floatingLabelStyle: TextStyle(
+                        color: theme.colorScheme.primary.withValues(alpha: 0.9),
+                      ),
                       prefixIcon: const Icon(Icons.percent),
                       border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(14)),
                     ),
                     validator: (v) {
                       final n = double.tryParse(v ?? '');
-                      if (n == null || n <= 0) return 'Inválido';
+                      if (n == null) return 'Inválido';
+                      if (n <= 0 || n > 100) return '1 - 100%';
                       if (n > available + 0.01) {
                         return 'Máx ${available.toStringAsFixed(0)}%';
                       }
@@ -999,158 +1318,9 @@ class _ActivityFormState extends State<_ActivityForm> {
                 ),
               ),
             ),
-          ],
+          ],git add .
         ),
       ),
-    );
-  }
-}
-
-class _GoalCalculatorDialog extends StatefulWidget {
-  final Subject subject;
-  const _GoalCalculatorDialog({required this.subject});
-
-  @override
-  State<_GoalCalculatorDialog> createState() =>
-      _GoalCalculatorDialogState();
-}
-
-class _GoalCalculatorDialogState extends State<_GoalCalculatorDialog> {
-  final _goalCtrl = TextEditingController(text: '3.5');
-  int _targetCutIndex = 2;
-  String _result = '';
-
-  @override
-  void dispose() {
-    _goalCtrl.dispose();
-    super.dispose();
-  }
-
-  void _calculate() {
-    final goal = double.tryParse(_goalCtrl.text);
-    if (goal == null || goal < 0 || goal > 5) {
-      setState(() => _result = 'Ingresa una meta válida (0.0 – 5.0)');
-      return;
-    }
-
-    final subject = widget.subject;
-    final targetCut = subject.cuts[_targetCutIndex];
-
-    double accumulated = 0;
-    for (int i = 0; i < subject.cuts.length; i++) {
-      if (i != _targetCutIndex) {
-        accumulated +=
-            subject.cuts[i].grade * (subject.cuts[i].weight / 100);
-      }
-    }
-
-    final needed =
-        (goal - accumulated) / (targetCut.weight / 100);
-
-    setState(() {
-      if (needed > 5.0) {
-        _result =
-            'No es posible alcanzar ${goal.toStringAsFixed(2)} en ${targetCut.name}.\n'
-            'La nota máxima posible con 5.0 sería '
-            '${(accumulated + 5.0 * targetCut.weight / 100).toStringAsFixed(2)}.';
-      } else if (needed < 0) {
-        _result =
-            'Ya tienes garantizada la meta ${goal.toStringAsFixed(2)} '
-            'sin importar la nota del ${targetCut.name}.';
-      } else {
-        _result =
-            'Necesitas sacar mínimo\n${needed.toStringAsFixed(2)}\nen ${targetCut.name}.';
-      }
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final subject = widget.subject;
-
-    return AlertDialog(
-      title: const Text('Calcular meta'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Materia: ${subject.name}',
-              style: theme.textTheme.bodyMedium
-                  ?.copyWith(fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 16),
-
-            TextFormField(
-              controller: _goalCtrl,
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
-              decoration: InputDecoration(
-                labelText: 'Meta de nota final (0.0 – 5.0)',
-                prefixIcon: const Icon(Icons.flag_outlined),
-                border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14)),
-              ),
-            ),
-            const SizedBox(height: 14),
-
-            DropdownButtonFormField<int>(
-              value: _targetCutIndex,
-              decoration: InputDecoration(
-                labelText: '¿Para qué corte calcular?',
-                prefixIcon: const Icon(Icons.calculate_outlined),
-                border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14)),
-              ),
-              items: List.generate(
-                subject.cuts.length,
-                (i) => DropdownMenuItem(
-                  value: i,
-                  child: Text(subject.cuts[i].name),
-                ),
-              ),
-              onChanged: (v) {
-                if (v != null) setState(() => _targetCutIndex = v);
-              },
-            ),
-            const SizedBox(height: 20),
-
-            if (_result.isNotEmpty)
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.primary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Text(
-                  _result,
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: theme.colorScheme.primary,
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cerrar'),
-        ),
-        ElevatedButton(
-          onPressed: _calculate,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: theme.colorScheme.primary,
-            foregroundColor: theme.colorScheme.onPrimary,
-          ),
-          child: const Text('Calcular'),
-        ),
-      ],
     );
   }
 }

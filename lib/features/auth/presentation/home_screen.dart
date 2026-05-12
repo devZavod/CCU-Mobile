@@ -52,7 +52,6 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
       appBar: AppBar(
@@ -70,73 +69,117 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
 
       drawer: Drawer(
-        child: ListView(
-          padding: EdgeInsets.zero,
+        child: Column(
           children: [
-            DrawerHeader(
+            Container(
+              width: double.infinity,
+              padding: EdgeInsets.only(
+                top: MediaQuery.of(context).padding.top + 24,
+                bottom: 24,
+                left: 24,
+                right: 24,
+              ),
               decoration: BoxDecoration(
-                color: theme.colorScheme.primary,
+                gradient: LinearGradient(
+                  colors: [
+                    theme.colorScheme.primary,
+                    theme.colorScheme.primary.withValues(alpha: 0.85),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  ColorFiltered(
-                    colorFilter: const ColorFilter.mode(
-                      Colors.white,
-                      BlendMode.srcIn,
-                    ),
-                    child: Image.asset(
-                      "assets/images/logo.png",
-                      height: 100,
+                  CircleAvatar(
+                    radius: 32,
+                    backgroundColor: Colors.white.withValues(alpha: 0.25),
+                    child: Text(
+                      widget.userName.isNotEmpty
+                          ? widget.userName[0].toUpperCase()
+                          : "E",
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 28,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 16),
                   Text(
                     widget.userName,
                     style: const TextStyle(
                       color: Colors.white,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 18,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    widget.userEmail,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.85),
+                      fontSize: 13,
                     ),
                   ),
                 ],
               ),
             ),
 
-            ListTile(
-              leading: const Icon(Icons.settings_outlined),
-              title: const Text("Configuración"),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => SettingsScreen(
-                      onToggleTheme: widget.onToggleTheme,
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                children: [
+                  ListTile(
+                    leading: Icon(
+                      Icons.settings_outlined,
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
                     ),
+                    title: const Text("Configuración"),
+                    onTap: () {
+                      Navigator.pop(context);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => SettingsScreen(
+                            onToggleTheme: widget.onToggleTheme,
+                          ),
+                        ),
+                      );
+                    },
                   ),
-                );
-              },
-            ),
 
-            ListTile(
-              leading: const Icon(Icons.logout),
-              title: const Text("Cerrar sesión"),
-              onTap: () async {
-                final prefs = await SharedPreferences.getInstance();
-                await prefs.clear();
-
-                if (context.mounted) {
-                  Navigator.pushAndRemoveUntil(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => LoginScreen(onToggleTheme: widget.onToggleTheme),
+                  ListTile(
+                    leading: Icon(
+                      Icons.logout_rounded,
+                      color: theme.colorScheme.error.withValues(alpha: 0.8),
                     ),
-                    (route) => false,
-                  );
-                }
-              },
+                    title: Text(
+                      "Cerrar sesión",
+                      style: TextStyle(
+                        color: theme.colorScheme.error.withValues(alpha: 0.9),
+                      ),
+                    ),
+                    onTap: () async {
+                      final prefs = await SharedPreferences.getInstance();
+                      await prefs.clear();
+
+                      if (context.mounted) {
+                        Navigator.pushAndRemoveUntil(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => LoginScreen(
+                              onToggleTheme: widget.onToggleTheme,
+                            ),
+                          ),
+                          (route) => false,
+                        );
+                      }
+                    },
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -147,39 +190,54 @@ class _HomeScreenState extends State<HomeScreen> {
         children: _pages,
       ),
 
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _selectedIndex,
-        onTap: _onItemTapped,
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: theme.colorScheme.primary,
-        unselectedItemColor: Colors.grey,
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.calendar_today_outlined),
-            activeIcon: Icon(Icons.calendar_today),
-            label: "Horario",
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.check_circle_outline),
-            activeIcon: Icon(Icons.check_circle),
-            label: "Tareas",
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.calculate_outlined),
-            activeIcon: Icon(Icons.calculate),
-            label: "Notas",
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.functions_outlined),
-            activeIcon: Icon(Icons.functions),
-            label: "Calcular",
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person_outline),
-            activeIcon: Icon(Icons.person),
-            label: "Perfil",
-          ),
-        ],
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          boxShadow: [
+            BoxShadow(
+              color: theme.colorScheme.shadow.withValues(alpha: 0.1),
+              blurRadius: 8,
+              offset: const Offset(0, -2),
+            ),
+          ],
+        ),
+        child: BottomNavigationBar(
+          currentIndex: _selectedIndex,
+          onTap: _onItemTapped,
+          type: BottomNavigationBarType.fixed,
+          selectedItemColor: theme.colorScheme.primary,
+          unselectedItemColor:
+              theme.colorScheme.onSurface.withValues(alpha: 0.5),
+          selectedFontSize: 13,
+          unselectedFontSize: 12,
+          elevation: 0,
+          items: const [
+            BottomNavigationBarItem(
+              icon: Icon(Icons.calendar_today_outlined),
+              activeIcon: Icon(Icons.calendar_today),
+              label: "Horario",
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.check_circle_outline),
+              activeIcon: Icon(Icons.check_circle),
+              label: "Tareas",
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.school_outlined),
+              activeIcon: Icon(Icons.school),
+              label: "Notas",
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.calculate_outlined),
+              activeIcon: Icon(Icons.calculate),
+              label: "Calcular",
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.person_outline),
+              activeIcon: Icon(Icons.person),
+              label: "Perfil",
+            ),
+          ],
+        ),
       ),
     );
   }
