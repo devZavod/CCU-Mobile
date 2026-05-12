@@ -1318,7 +1318,7 @@ class _ActivityFormState extends State<_ActivityForm> {
                 ),
               ),
             ),
-          ],git add .
+          ],
         ),
       ),
     );
