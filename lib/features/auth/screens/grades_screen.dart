@@ -197,6 +197,7 @@ class _GradesScreenState extends State<GradesScreen> {
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
+                        
                         Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           crossAxisAlignment: CrossAxisAlignment.end,
@@ -467,7 +468,10 @@ class _SubjectDetailPage extends StatefulWidget {
 }
 
 class _SubjectDetailPageState extends State<_SubjectDetailPage> {
-  // ELIMINADO: _rebuild() no se usaba en ningún lugar
+  void _rebuild() {
+    setState(() {});
+    widget.onChanged();
+  }
 
   void _openAddActivity(Cut cut) {
     showModalBottomSheet(
@@ -529,6 +533,7 @@ class _SubjectDetailPageState extends State<_SubjectDetailPage> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final subject = widget.subject;
 
     return Scaffold(
@@ -1091,9 +1096,8 @@ class _GoalCalculatorDialogState extends State<_GoalCalculatorDialog> {
             ),
             const SizedBox(height: 14),
 
-            // CORREGIDO: value → initialValue
             DropdownButtonFormField<int>(
-              initialValue: _targetCutIndex,
+              value: _targetCutIndex,
               decoration: InputDecoration(
                 labelText: '¿Para qué corte calcular?',
                 prefixIcon: const Icon(Icons.calculate_outlined),
