@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/auth_service.dart';
 
+import 'package:ccu_mobile/features/auth/services/api_service.dart';
+
 
 class ProfileScreen extends StatefulWidget {
   final String userName;
@@ -117,7 +119,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final fullImageUrl = _profilePicUrl != null 
-        ? "${AuthService.baseUrl}$_profilePicUrl?v=${DateTime.now().millisecondsSinceEpoch}" 
+        ? "${ApiService.baseUrl}$_profilePicUrl?v=${DateTime.now().millisecondsSinceEpoch}"
         : null;
 
     return SingleChildScrollView(

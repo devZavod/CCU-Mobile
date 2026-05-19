@@ -7,7 +7,7 @@ class ApiService {
   //static const String baseUrl = 'http://10.0.2.2:8000'; // Android emulador
   // static const String baseUrl = 'http://localhost:8000'; // iOS / web
   // static const String baseUrl = 'https://tu-dominio.com'; // Producción
-   static const String baseUrl = 'http://127.0.0.1:8000';
+   static const String baseUrl = 'https://ccu-backend.onrender.com';
 
   static Map<String, String> get headers => {
     'Content-Type': 'application/json',
@@ -32,6 +32,16 @@ class ApiService {
     );
     return _handleResponse(response);
   }
+
+  // Agrega esto dentro de ApiService
+  static Future<dynamic> put(String endpoint, Map<String, dynamic> body) async {
+    final response = await http.put(
+      Uri.parse('$baseUrl$endpoint'),
+      headers: headers,
+      body: jsonEncode(body),
+  );
+  return _handleResponse(response);
+}
 
   static dynamic _handleResponse(http.Response response) {
     if (response.statusCode >= 200 && response.statusCode < 300) {
