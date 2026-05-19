@@ -129,9 +129,9 @@ class _TasksScreenState extends State<TasksScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.check_circle_outline,
-                      size: 72,
-                      color: theme.colorScheme.primary.withValues(alpha: 0.3)),
+                    Icon(Icons.check_circle_outline,
+                      size: 92,
+                      color: theme.colorScheme.primary.withValues(alpha: 0.18)),
                   const SizedBox(height: 16),
                   Text(
                     'Sin tareas por ahora',
@@ -177,10 +177,11 @@ class _TasksScreenState extends State<TasksScreen> {
               ],
             ),
 
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: FloatingActionButton(
         onPressed: () => _openForm(),
-        icon: const Icon(Icons.add),
-        label: const Text('Nueva tarea'),
+        tooltip: 'Nueva tarea',
+        elevation: 6,
+        child: const Icon(Icons.add),
       ),
     );
   }
@@ -231,6 +232,8 @@ class _TaskTile extends StatelessWidget {
 
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: ListTile(
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
@@ -239,9 +242,10 @@ class _TaskTile extends StatelessWidget {
         leading: GestureDetector(
           onTap: onToggle,
           child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            width: 28,
-            height: 28,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
+            width: 32,
+            height: 32,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: task.completed
@@ -251,11 +255,11 @@ class _TaskTile extends StatelessWidget {
                 color: task.completed
                     ? theme.colorScheme.primary
                     : theme.colorScheme.outline,
-                width: 2,
+                width: 2.5,
               ),
             ),
             child: task.completed
-                ? const Icon(Icons.check, size: 16, color: Colors.white)
+                ? const Icon(Icons.check, size: 18, color: Colors.white)
                 : null,
           ),
         ),
@@ -290,16 +294,16 @@ class _TaskTile extends StatelessWidget {
                 // Chip de prioridad
                 Container(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 8, vertical: 2),
+                      horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: priorityColor.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(20),
+                    color: priorityColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(16),
                   ),
                   child: Text(
                     priorityLabel,
                     style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
                       color: priorityColor,
                     ),
                   ),
@@ -440,7 +444,8 @@ class _TaskFormState extends State<_TaskForm> {
               Text(
                 isEdit ? 'Editar tarea' : 'Nueva tarea',
                 style: theme.textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
                 ),
               ),
               const SizedBox(height: 20),
@@ -543,9 +548,9 @@ class _TaskFormState extends State<_TaskForm> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: theme.colorScheme.primary,
                     foregroundColor: theme.colorScheme.onPrimary,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    padding: const EdgeInsets.symmetric(vertical: 18),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: BorderRadius.circular(20),
                     ),
                   ),
                   child: Text(
