@@ -42,8 +42,12 @@ Antes de instalar dependencias del proyecto, necesitas tener configurado el ento
 ```bash
 flutter doctor
 flutter pub get
-#Para ejecutar
+```
+Ejecución
+```bash
+
 flutter run
+```
 
 
 
