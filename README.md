@@ -37,9 +37,14 @@ Antes de instalar dependencias del proyecto, necesitas tener configurado el ento
 | [Xcode](https://developer.apple.com/xcode/) | Última estable (solo macOS) | Compilación y pruebas en iOS |
 | [Git](https://git-scm.com/) | Última estable | Control de versiones |
 | Cuenta Firebase | — | Configuración de notificaciones push (FCM) |
-
-Verifica la instalación:
+ Instalación:
 
 ```bash
 flutter doctor
+flutter pub get
+#Para ejecutar
+flutter run
+
+
+
 
